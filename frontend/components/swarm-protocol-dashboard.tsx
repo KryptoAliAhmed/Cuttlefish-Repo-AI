@@ -360,7 +360,7 @@ export function SwarmProtocolDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Active Agents</p>
-                <p className="text-2xl font-bold">{agents.length}</p>
+                                        <p className="text-2xl font-bold">{(agents?.length || 0)}</p>
               </div>
               <Bot className="w-8 h-8 text-blue-500" />
             </div>
@@ -372,7 +372,7 @@ export function SwarmProtocolDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">TrustGraph Entries</p>
-                <p className="text-2xl font-bold">{trustGraphEntries.length}</p>
+                                        <p className="text-2xl font-bold">{(trustGraphEntries?.length || 0)}</p>
               </div>
               <Hash className="w-8 h-8 text-green-500" />
             </div>
@@ -384,9 +384,9 @@ export function SwarmProtocolDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Active Workflows</p>
-                <p className="text-2xl font-bold">
-                  {activeWorkflows.filter(w => w.status === 'running').length}
-                </p>
+                                        <p className="text-2xl font-bold">
+                          {(activeWorkflows?.filter(w => w.status === 'running')?.length || 0)}
+                        </p>
               </div>
               <Workflow className="w-8 h-8 text-purple-500" />
             </div>
@@ -516,7 +516,7 @@ export function SwarmProtocolDashboard() {
               
               <Button 
                 onClick={createWorkflow}
-                disabled={isCreatingWorkflow || !newWorkflow.title || newWorkflow.agents.length === 0}
+                disabled={isCreatingWorkflow || !newWorkflow.title || (newWorkflow.agents?.length || 0) === 0}
                 className="w-full"
               >
                 {isCreatingWorkflow ? (
@@ -543,11 +543,11 @@ export function SwarmProtocolDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {activeWorkflows.length === 0 ? (
+              {(activeWorkflows?.length || 0) === 0 ? (
                 <p className="text-gray-500 text-center py-8">No active workflows</p>
               ) : (
                 <div className="space-y-4">
-                  {activeWorkflows.map((workflow) => (
+                  {activeWorkflows?.map((workflow) => (
                     <div
                       key={workflow.task_id}
                       className="p-4 border rounded-lg space-y-3"
@@ -558,7 +558,7 @@ export function SwarmProtocolDashboard() {
                           <div>
                             <h3 className="font-medium">{workflow.title}</h3>
                             <p className="text-sm text-gray-500">
-                              {workflow.workflow_type} • {workflow.agents.length} agents
+                              {workflow.workflow_type || 'Unknown'} • {(workflow.agents?.length || 0)} agents
                             </p>
                           </div>
                         </div>
@@ -587,13 +587,13 @@ export function SwarmProtocolDashboard() {
                         </Accordion>
                       )}
                       
-                      {workflow.audit_log.length > 0 && (
+                      {(workflow.audit_log?.length || 0) > 0 && (
                         <div className="text-sm text-gray-600">
                           <strong>Audit Log:</strong>
                           <ul className="list-disc list-inside mt-1">
-                            {workflow.audit_log.map((log, index) => (
+                            {workflow.audit_log?.map((log, index) => (
                               <li key={index}>{log}</li>
-                            ))}
+                            )) || []}
                           </ul>
                         </div>
                       )}
@@ -676,14 +676,14 @@ export function SwarmProtocolDashboard() {
                           <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
-                    ) : trustGraphEntries.length === 0 ? (
+                    ) : (trustGraphEntries?.length || 0) === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                           No TrustGraph entries found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      trustGraphEntries.map((entry) => (
+                      trustGraphEntries?.map((entry) => (
                         <TableRow key={entry.entry_id}>
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -760,7 +760,7 @@ export function SwarmProtocolDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {agents.map((agent) => (
+                {agents?.map((agent) => (
                   <div
                     key={agent.agent_id}
                     className="p-4 border rounded-lg space-y-3"
@@ -786,7 +786,7 @@ export function SwarmProtocolDashboard() {
                 ))}
               </div>
               
-              {agents.length === 0 && (
+              {(agents?.length || 0) === 0 && (
                 <p className="text-gray-500 text-center py-8">No agents registered</p>
               )}
             </CardContent>

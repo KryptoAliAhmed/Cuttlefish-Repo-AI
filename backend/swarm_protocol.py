@@ -642,6 +642,121 @@ class SignalAgent(BaseAgent):
             logger.error(f"SignalAgent execution failed: {e}")
             return {'error': str(e)}
 
+class PredictiveAgent(BaseAgent):
+    """PredictiveAgent for forecasting and predictive analytics"""
+    
+    def __init__(self):
+        super().__init__("predictive_agent_001", AgentType.PREDICTIVE_AGENT)
+    
+    async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            # Simulate predictive analytics
+            forecast_data = context.get('forecast_data', {})
+            
+            prediction_result = {
+                'prediction_id': f"PRED_{int(time.time())}",
+                'type': 'market_forecast',
+                'asset': 'E2R',
+                'timeframe': '30d',
+                'predicted_price': 1.35,
+                'confidence': 0.72,
+                'volatility_estimate': 0.15,
+                'trend_direction': 'bullish',
+                'summary': 'Bullish forecast for E2R token over 30-day period',
+                'context_updates': {
+                    'prediction_confidence': 0.72,
+                    'forecast_trend': 'bullish'
+                }
+            }
+            
+            self.execution_history.append({
+                'timestamp': time.time(),
+                'action': 'predictive_analysis',
+                'result': prediction_result
+            })
+            
+            return prediction_result
+            
+        except Exception as e:
+            logger.error(f"PredictiveAgent execution failed: {e}")
+            return {'error': str(e)}
+
+class ComplianceAgent(BaseAgent):
+    """ComplianceAgent for regulatory compliance and risk assessment"""
+    
+    def __init__(self):
+        super().__init__("compliance_agent_001", AgentType.COMPLIANCE_AGENT)
+    
+    async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            # Simulate regulatory compliance checks
+            compliance_data = context.get('compliance_data', {})
+            
+            compliance_result = {
+                'compliance_id': f"COMP_{int(time.time())}",
+                'type': 'regulatory_compliance',
+                'target': 'trading_operations',
+                'regulatory_approved': True,
+                'risk_assessment': 'low',
+                'compliance_score': 0.89,
+                'confidence': 0.91,
+                'summary': 'Regulatory compliance check passed with low risk assessment',
+                'context_updates': {
+                    'regulatory_status': 'approved',
+                    'risk_level': 'low'
+                }
+            }
+            
+            self.execution_history.append({
+                'timestamp': time.time(),
+                'action': 'regulatory_compliance',
+                'result': compliance_result
+            })
+            
+            return compliance_result
+            
+        except Exception as e:
+            logger.error(f"ComplianceAgent execution failed: {e}")
+            return {'error': str(e)}
+
+class RefactorAgent(BaseAgent):
+    """RefactorAgent for code optimization and refactoring"""
+    
+    def __init__(self):
+        super().__init__("refactor_agent_001", AgentType.REFACTOR_AGENT)
+    
+    async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            # Simulate code refactoring and optimization
+            code_data = context.get('code_data', {})
+            
+            refactor_result = {
+                'refactor_id': f"REFACTOR_{int(time.time())}",
+                'type': 'code_optimization',
+                'target': 'smart_contracts',
+                'optimization_score': 0.87,
+                'gas_savings': 0.23,
+                'security_improvement': 0.15,
+                'confidence': 0.84,
+                'summary': 'Code refactoring completed with 23% gas savings and improved security',
+                'context_updates': {
+                    'optimization_status': 'completed',
+                    'gas_efficiency': 0.23
+                }
+            }
+            
+            self.execution_history.append({
+                'timestamp': time.time(),
+                'action': 'code_refactoring',
+                'result': refactor_result
+            })
+            
+            return refactor_result
+            
+        except Exception as e:
+            logger.error(f"RefactorAgent execution failed: {e}")
+            return {'error': str(e)}
+
 class MetaAuditor(BaseAgent):
     """MetaAuditor for auditing agent actions and ensuring ESG compliance"""
     
@@ -724,25 +839,40 @@ class SwarmProtocolManager:
         if not hasattr(self, 'initialized'):
             self.protocol = SwarmProtocol()
             self.initialized = True
+            self.agents_initialized = False
     
     async def initialize_agents(self):
         """Initialize all agents"""
+        # Clear existing agents if any
+        self.protocol.agents.clear()
+        
         agents = [
             BuilderAgent(),
             PermitAgent(),
             SignalAgent(),
+            PredictiveAgent(),
+            ComplianceAgent(),
+            RefactorAgent(),
             MetaAuditor()
         ]
         
         for agent in agents:
             await self.protocol.register_agent(agent)
         
+        self.agents_initialized = True
         logger.info(f"Initialized {len(agents)} agents")
+    
+    async def ensure_agents_initialized(self):
+        """Ensure agents are initialized before use"""
+        if not self.agents_initialized:
+            await self.initialize_agents()
     
     async def create_workflow(self, title: str, description: str, 
                             workflow_type: WorkflowType, agents: List[AgentType],
                             context: Dict[str, Any] = None) -> SwarmTask:
         """Create a new workflow task"""
+        await self.ensure_agents_initialized()
+        
         task = SwarmTask(
             title=title,
             description=description,
@@ -755,6 +885,7 @@ class SwarmProtocolManager:
     
     async def execute_workflow(self, task: SwarmTask) -> Dict[str, Any]:
         """Execute a workflow"""
+        await self.ensure_agents_initialized()
         return await self.protocol.execute_workflow(task)
     
     async def get_trust_graph(self, agent_type: Optional[AgentType] = None, 

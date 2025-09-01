@@ -1377,8 +1377,10 @@ async def chat_api(request: ChatRequest):
         if not request.question:
             raise HTTPException(status_code=400, detail="No question provided")
         
-        answer, source, distance = answer_question(request.question, request.mode)
+        # Use improved RAG function
+        answer, source, distance = answer_question_improved(request.question, request.mode)
         confidence = 1 / (1 + distance) if distance != 0 else 1.0
+        
         # ESG extraction and computation (use superior kernel engine)
         esg = None
         try:
@@ -1447,12 +1449,50 @@ async def status_api():
     supported_files = [f for f in os.listdir(DATA_DIR) if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS or not Path(f).suffix] if os.path.exists(DATA_DIR) else []
     unique_docs = set(chunk_sources) if chunk_sources else set()
     
+    # Get detailed statistics
+    stats = get_document_statistics()
+    
     return StatusResponse(
         documents_loaded=len(unique_docs),
         index_ready=bool(index is not None),
         files=supported_files,
         api_configured=bool(client is not None)
     )
+
+@app.get("/api/document-stats")
+async def document_stats_api():
+    """Get detailed document statistics."""
+    try:
+        stats = get_document_statistics()
+        return {
+            "status": "success",
+            "data": stats
+        }
+    except Exception as e:
+        logger.error(f"Error getting document stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/search")
+async def search_api(request: dict):
+    """Search documents with detailed results."""
+    try:
+        query = request.get("query", "")
+        top_k = request.get("top_k", 5)
+        
+        if not query:
+            raise HTTPException(status_code=400, detail="No query provided")
+        
+        results = search_documents(query, top_k)
+        
+        return {
+            "status": "success",
+            "query": query,
+            "results": results,
+            "total_results": len(results)
+        }
+    except Exception as e:
+        logger.error(f"Error in search API: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/build-embeddings")
 async def build_embeddings_api():
@@ -1811,29 +1851,136 @@ async def kernel_scores_get_api():
     
     return KernelScoresResponse(kernel_scores=mock_scores)
 
+# === WebSocket Connection Management ===
+class WebSocketManager:
+    """Manages WebSocket connections with proper cleanup"""
+    
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+        self.connection_count = 0
+    
+    async def connect(self, websocket: WebSocket):
+        """Accept and track a new WebSocket connection"""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        self.connection_count += 1
+        logger.info(f"WebSocket connected. Total connections: {self.connection_count}")
+    
+    def disconnect(self, websocket: WebSocket):
+        """Remove a WebSocket connection from tracking"""
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+            self.connection_count -= 1
+            logger.info(f"WebSocket disconnected. Total connections: {self.connection_count}")
+    
+    async def broadcast(self, message: dict):
+        """Broadcast message to all active connections"""
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error broadcasting to WebSocket: {e}")
+                disconnected.append(connection)
+        
+        # Clean up disconnected connections
+        for connection in disconnected:
+            self.disconnect(connection)
+    
+    async def close_all(self):
+        """Close all active WebSocket connections"""
+        for connection in self.active_connections[:]:  # Copy list to avoid modification during iteration
+            try:
+                await connection.close(code=1000, reason="Server shutdown")
+            except Exception as e:
+                logger.error(f"Error closing WebSocket: {e}")
+            finally:
+                self.disconnect(connection)
+        logger.info("All WebSocket connections closed")
+
+# Global WebSocket manager
+websocket_manager = WebSocketManager()
+
 # WebSocket for real-time kernel updates
 @app.websocket("/ws/kernel/updates")
 async def websocket_kernel_updates(websocket: WebSocket):
-    """WebSocket endpoint for real-time kernel score updates."""
-    await websocket.accept()
+    """WebSocket endpoint for real-time kernel score updates with proper close frame handling."""
+    await websocket_manager.connect(websocket)
+    
     try:
         while True:
-            # Send periodic updates
-            await asyncio.sleep(5)
-            
-            # Get latest kernel data
-            latest_scores = await get_latest_kernel_scores()
-            
-            await websocket.send_json({
-                "type": "kernel_update",
-                "timestamp": datetime.now().isoformat(),
-                "scores": latest_scores
-            })
-            
+            # Check if connection is still alive
+            try:
+                # Send periodic updates
+                await asyncio.sleep(5)
+                
+                # Get latest kernel data
+                latest_scores = await get_latest_kernel_scores()
+                
+                await websocket.send_json({
+                    "type": "kernel_update",
+                    "timestamp": datetime.now().isoformat(),
+                    "scores": latest_scores
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in WebSocket loop: {e}")
+                break
+                
     except WebSocketDisconnect:
-        logger.info("WebSocket kernel updates disconnected")
+        logger.info("WebSocket kernel updates disconnected by client")
     except Exception as e:
         logger.error(f"WebSocket kernel error: {e}")
+    finally:
+        # Ensure proper cleanup with close frame
+        websocket_manager.disconnect(websocket)
+        try:
+            # Send close frame with proper code and reason
+            await websocket.close(code=1000, reason="Normal closure")
+            logger.info("WebSocket kernel updates closed properly")
+        except Exception as e:
+            logger.error(f"Error closing WebSocket: {e}")
+
+# WebSocket for general system status updates
+@app.websocket("/ws/status")
+async def websocket_status_updates(websocket: WebSocket):
+    """WebSocket endpoint for real-time system status updates with proper close frame handling."""
+    await websocket_manager.connect(websocket)
+    
+    try:
+        while True:
+            try:
+                # Send periodic status updates
+                await asyncio.sleep(10)
+                
+                # Get system status
+                status = {
+                    "type": "status_update",
+                    "timestamp": datetime.now().isoformat(),
+                    "system_status": "healthy",
+                    "active_connections": websocket_manager.connection_count,
+                    "last_kernel_update": datetime.now().isoformat(),
+                    "rag_status": "operational"
+                }
+                
+                await websocket.send_json(status)
+                
+            except Exception as e:
+                logger.error(f"Error in status WebSocket loop: {e}")
+                break
+                
+    except WebSocketDisconnect:
+        logger.info("WebSocket status updates disconnected by client")
+    except Exception as e:
+        logger.error(f"WebSocket status error: {e}")
+    finally:
+        # Ensure proper cleanup with close frame
+        websocket_manager.disconnect(websocket)
+        try:
+            await websocket.close(code=1000, reason="Normal closure")
+            logger.info("WebSocket status updates closed properly")
+        except Exception as e:
+            logger.error(f"Error closing status WebSocket: {e}")
 
 async def get_latest_kernel_scores() -> List[Dict[str, Any]]:
     """Get latest kernel scores for WebSocket updates."""
@@ -2631,7 +2778,189 @@ async def startup_event():
     
     logger.info("Application startup complete")
 
+# === Shutdown Event ===
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources on shutdown."""
+    logger.info("Application shutting down...")
+    
+    # Close all WebSocket connections
+    await websocket_manager.close_all()
+    
+    logger.info("Application shutdown complete")
+
 # === Main Entry Point ===
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5002)
+
+# === Improved RAG Functions ===
+
+def answer_question_improved(question: str, mode: Optional[str] = None) -> tuple[str, Optional[str], float]:
+    """Enhanced answer function with better context retrieval and source tracking."""
+    if not index or not documents:
+        return "No documents loaded. Please add documents first.", None, 1.0
+    
+    # Get question embedding
+    question_embedding = get_embeddings([question])
+    if not question_embedding:
+        return "Failed to generate question embedding.", None, 1.0
+    
+    # Search for more relevant documents (increased from 3 to 5)
+    D, I = index.search(np.array(question_embedding), k=5)
+    
+    if len(I[0]) == 0:
+        return "No relevant documents found.", None, 1.0
+    
+    # Get the most relevant documents for context with better filtering
+    relevant_docs = []
+    sources_used = []
+    distances = []
+    
+    for i in range(min(5, len(I[0]))):
+        doc_idx = I[0][i]
+        distance = D[0][i]
+        
+        if doc_idx < len(documents):
+            # Only include documents with reasonable similarity (distance < 1.0)
+            if distance < 1.0:
+                relevant_docs.append(documents[doc_idx])
+                sources_used.append(chunk_sources[doc_idx] if doc_idx < len(chunk_sources) else "Unknown")
+                distances.append(distance)
+    
+    if not relevant_docs:
+        return "No sufficiently relevant documents found.", None, 1.0
+    
+    # Combine context with source information
+    combined_context = ""
+    for i, doc in enumerate(relevant_docs):
+        source_info = f"[Source: {sources_used[i]}]"
+        combined_context += f"{source_info}\n{doc}\n\n"
+    
+    best_idx = I[0][0]
+    best_distance = D[0][0]
+    source = chunk_sources[best_idx] if best_idx < len(chunk_sources) else "Unknown"
+    
+    # Generate answer using improved prompt
+    answer = _generate_answer_with_improved_context(question, combined_context, sources_used)
+    
+    return answer, source, best_distance
+
+def _generate_answer_with_improved_context(question: str, context: str, sources: List[str]) -> str:
+    """Generate answer using LLM with improved context and source tracking."""
+    try:
+        # Enhanced prompt with better instructions
+        enhanced_prompt = f"""
+Based on the following context, please answer the user's question professionally and accurately.
+
+IMPORTANT INSTRUCTIONS:
+1. Only answer based on the provided context
+2. If the context doesn't contain relevant information, say "Based on the provided context, there is no information about [specific topic]"
+3. Always cite the specific source when providing information
+4. Be specific and avoid generic responses
+5. If you're making inferences, clearly state they are inferences
+
+Context:
+{context}
+
+Question: {question}
+
+Sources available: {', '.join(set(sources))}
+
+Please provide a well-structured answer that directly addresses the question using the provided context.
+"""
+        
+        if LLM_PROVIDER == "openai" and client:
+            response = client.chat.completions.create(
+                model=OPENAI_CHAT_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a professional research assistant. Always be precise, cite sources, and only answer based on the provided context."},
+                    {"role": "user", "content": enhanced_prompt}
+                ],
+                temperature=0.3,  # Lower temperature for more consistent responses
+                max_tokens=1000
+            )
+            return response.choices[0].message.content.strip()
+        
+        elif LLM_PROVIDER == "gemini" and gemini_ready:
+            model = genai.GenerativeModel(GEMINI_CHAT_MODEL)
+            prompt = f"You are a professional research assistant. Always be precise, cite sources, and only answer based on the provided context.\n\n{enhanced_prompt}"
+            response = model.generate_content(prompt)
+            return response.text.strip()
+        
+        elif LLM_PROVIDER == "xai" and xai_client:
+            response = xai_client.chat.completions.create(
+                model=XAI_CHAT_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a professional research assistant. Always be precise, cite sources, and only answer based on the provided context."},
+                    {"role": "user", "content": enhanced_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            )
+            return response.choices[0].message.content.strip()
+        
+        else:
+            return "LLM provider not available or not configured properly."
+    
+    except Exception as e:
+        logger.error(f"Error generating answer: {e}")
+        return f"Error generating answer: {str(e)}"
+
+def get_document_statistics() -> Dict[str, Any]:
+    """Get detailed statistics about the loaded documents."""
+    if not documents or not chunk_sources:
+        return {
+            "total_documents": 0,
+            "total_chunks": 0,
+            "unique_sources": 0,
+            "source_distribution": {},
+            "average_chunk_length": 0
+        }
+    
+    source_counts = {}
+    total_length = 0
+    
+    for source in chunk_sources:
+        source_counts[source] = source_counts.get(source, 0) + 1
+        total_length += len(documents[len(source_counts) - 1]) if len(source_counts) <= len(documents) else 0
+    
+    return {
+        "total_documents": len(set(chunk_sources)),
+        "total_chunks": len(documents),
+        "unique_sources": len(set(chunk_sources)),
+        "source_distribution": source_counts,
+        "average_chunk_length": total_length / len(documents) if documents else 0
+    }
+
+def search_documents(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    """Search documents and return detailed results with relevance scores."""
+    if not index or not documents:
+        return []
+    
+    # Get query embedding
+    query_embedding = get_embeddings([query])
+    if not query_embedding:
+        return []
+    
+    # Search for similar documents
+    D, I = index.search(np.array(query_embedding), k=top_k)
+    
+    results = []
+    for i in range(len(I[0])):
+        doc_idx = I[0][i]
+        distance = D[0][i]
+        
+        if doc_idx < len(documents):
+            source = chunk_sources[doc_idx] if doc_idx < len(chunk_sources) else "Unknown"
+            confidence = 1 / (1 + distance) if distance != 0 else 1.0
+            
+            results.append({
+                "content": documents[doc_idx],
+                "source": source,
+                "distance": float(distance),
+                "confidence": float(confidence),
+                "index": int(doc_idx)
+            })
+    
+    return results

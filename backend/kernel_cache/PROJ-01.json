@@ -1,0 +1,77 @@
+{
+  "project_id": "PROJ-01",
+  "project_name": " Community Health Center Construction",
+  "project_type": "solar_farm",
+  "financial": {
+    "score": 57.2,
+    "confidence": 0.75,
+    "breakdown": {
+      "roi": 46.8,
+      "cost_efficiency": 56.5,
+      "funding_stability": 90,
+      "apy_projection": 20.4,
+      "market_volatility": 85,
+      "liquidity_risk": 75
+    },
+    "reasoning": "Financial evaluation using Sharpe ratio (ROI: 0.1%, APY: 0.0%), funding: private, cost: $450,000",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "financial_formulas"
+    ]
+  },
+  "ecological": {
+    "score": 41.4,
+    "confidence": 0.8,
+    "breakdown": {
+      "carbon_impact": 64.0,
+      "renewable_energy_mix": 63.4,
+      "material_sustainability": 0,
+      "water_efficiency": 0,
+      "waste_management": 0
+    },
+    "reasoning": "Ecological evaluation: 25 tons CO2 impact, 40.0% renewable energy, mixed materials, unknown water efficiency, unknown waste management",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "environmental_science_formulas"
+    ]
+  },
+  "social": {
+    "score": 31.5,
+    "confidence": 0.75,
+    "breakdown": {
+      "job_creation": 75.0,
+      "community_benefit": 0,
+      "housing_equity": 0,
+      "regional_impact": 0,
+      "regulatory_compliance": 90
+    },
+    "reasoning": "Social evaluation: 12 direct jobs (30.0 total impact), medium community benefit, unknown housing equity, unknown regional impact, compliant compliance",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "social_impact_formulas"
+    ]
+  },
+  "overall_score": 44.5,
+  "overall_confidence": 0.77,
+  "risk_factors": [
+    "Low financial viability",
+    "Environmental concerns",
+    "Social impact risks",
+    "Low ROI potential"
+  ],
+  "recommendations": [
+    "Consider optimizing cost structure",
+    "Explore additional funding sources",
+    "Increase renewable energy integration",
+    "Implement sustainable material sourcing",
+    "Enhance community engagement",
+    "Expand job creation initiatives",
+    "Increase renewable energy percentage",
+    "Develop job training programs"
+  ],
+  "created_at": "annotation=NoneType required=False default_factory=time",
+  "updated_at": "annotation=NoneType required=False default_factory=time"
+}

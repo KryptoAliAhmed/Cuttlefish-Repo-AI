@@ -1,0 +1,66 @@
+{
+  "project_id": "proj_1756732083",
+  "project_name": "VOICE_MODE_FOCUSED:  the - Give a short, focused answer with key points only. Keep it concise and direct. No extra details, no formal language. Just the essential information in 1-2 sentences.",
+  "project_type": "solar_farm",
+  "financial": {
+    "score": 79.4,
+    "confidence": 0.75,
+    "breakdown": {
+      "roi": 76.7,
+      "cost_efficiency": 61.8,
+      "funding_stability": 90,
+      "apy_projection": 100,
+      "market_volatility": 85,
+      "liquidity_risk": 75
+    },
+    "reasoning": "Financial evaluation using Sharpe ratio (ROI: 18.0%, APY: 12.0%), funding: private, cost: $1,500,000",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "financial_formulas"
+    ]
+  },
+  "ecological": {
+    "score": 96.0,
+    "confidence": 0.8,
+    "breakdown": {
+      "carbon_impact": 100,
+      "renewable_energy_mix": 95.0,
+      "material_sustainability": 95,
+      "water_efficiency": 85,
+      "waste_management": 100
+    },
+    "reasoning": "Ecological evaluation: -150 tons CO2 impact, 90.0% renewable energy, recycled materials, high water efficiency, zero_waste waste management",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "environmental_science_formulas"
+    ]
+  },
+  "social": {
+    "score": 87.8,
+    "confidence": 0.75,
+    "breakdown": {
+      "job_creation": 92.5,
+      "community_benefit": 85,
+      "housing_equity": 85,
+      "regional_impact": 85,
+      "regulatory_compliance": 90
+    },
+    "reasoning": "Social evaluation: 30 direct jobs (75.0 total impact), high community benefit, mixed_income housing equity, significant regional impact, compliant compliance",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "social_impact_formulas"
+    ]
+  },
+  "overall_score": 88.1,
+  "overall_confidence": 0.77,
+  "risk_factors": [],
+  "recommendations": [
+    "Consider optimizing cost structure",
+    "Explore additional funding sources"
+  ],
+  "created_at": "annotation=NoneType required=False default_factory=time",
+  "updated_at": "annotation=NoneType required=False default_factory=time"
+}

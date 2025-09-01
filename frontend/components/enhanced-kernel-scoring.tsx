@@ -55,7 +55,10 @@ export function EnhancedKernelScoring() {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        const ws = new WebSocket(`ws://${API_BASE.replace('http://', '')}/ws/kernel/updates`)
+        // Properly construct WebSocket URL
+        const wsUrl = API_BASE.replace('http://', 'ws://').replace('https://', 'wss://')
+        console.log("Connecting to WebSocket:", `${wsUrl}/ws/kernel/updates`)
+        const ws = new WebSocket(`${wsUrl}/ws/kernel/updates`)
         
         ws.onopen = () => {
           setWsConnected(true)
@@ -88,11 +91,13 @@ export function EnhancedKernelScoring() {
           }
         }
         
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           setWsConnected(false)
-          console.log("WebSocket disconnected")
-          // Reconnect after 5 seconds
-          setTimeout(connectWebSocket, 5000)
+          console.log("WebSocket disconnected", event.code, event.reason)
+          // Only reconnect if it wasn't a normal closure
+          if (event.code !== 1000) {
+            setTimeout(connectWebSocket, 5000)
+          }
         }
         
         ws.onerror = (error) => {
@@ -111,7 +116,8 @@ export function EnhancedKernelScoring() {
     
     return () => {
       if (wsRef.current) {
-        wsRef.current.close()
+        wsRef.current.close(1000, "Component unmounting")
+        wsRef.current = null
       }
     }
   }, [API_BASE])

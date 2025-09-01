@@ -1,0 +1,69 @@
+{
+  "project_id": "proj_1756737529",
+  "project_name": "Project Overview: Community Health Center Construction  Financial Data:  Total Cost: $450,000  Return on Investment (ROI): 6% (0.06)  Funding Source: Government Grant  Annual Percentage Yield (APY) Projection: 4% (0.04)  Ecological Data:  Carbon Impact: -25 tons (reduced through energy-efficient design)  Percentage of Renewable Energy: 40%  Material Sourcing: Locally sourced sustainable wood and concrete  Social Data:  Job Creation: 12 jobs  Community Benefit: Medium (provides healthcare access for underserved groups)  Regulatory Alignment: Fully compliant with municipal building codes  Summary  The community health center project is moderately profitable with stable government-backed funding and a modest ROI. Ecologically, it reduces emissions by incorporating energy-efficient designs and partial renewable integration while relying on sustainable local materials. Socially, the project generates healthcare access, creates jobs, and aligns with public welfare objectives, offering measurable but balanced benefits.",
+  "project_type": "solar_farm",
+  "financial": {
+    "score": 72.1,
+    "confidence": 0.75,
+    "breakdown": {
+      "roi": 56.7,
+      "cost_efficiency": 56.5,
+      "funding_stability": 90,
+      "apy_projection": 100,
+      "market_volatility": 85,
+      "liquidity_risk": 75
+    },
+    "reasoning": "Financial evaluation using Sharpe ratio (ROI: 6.0%, APY: 12.0%), funding: private, cost: $450,000",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "financial_formulas"
+    ]
+  },
+  "ecological": {
+    "score": 96.0,
+    "confidence": 0.8,
+    "breakdown": {
+      "carbon_impact": 100,
+      "renewable_energy_mix": 95.0,
+      "material_sustainability": 95,
+      "water_efficiency": 85,
+      "waste_management": 100
+    },
+    "reasoning": "Ecological evaluation: -150 tons CO2 impact, 90.0% renewable energy, recycled materials, high water efficiency, zero_waste waste management",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "environmental_science_formulas"
+    ]
+  },
+  "social": {
+    "score": 82.5,
+    "confidence": 0.75,
+    "breakdown": {
+      "job_creation": 75.0,
+      "community_benefit": 85,
+      "housing_equity": 85,
+      "regional_impact": 85,
+      "regulatory_compliance": 90
+    },
+    "reasoning": "Social evaluation: 12 direct jobs (30.0 total impact), high community benefit, mixed_income housing equity, significant regional impact, compliant compliance",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "social_impact_formulas"
+    ]
+  },
+  "overall_score": 84.3,
+  "overall_confidence": 0.77,
+  "risk_factors": [
+    "Low ROI potential"
+  ],
+  "recommendations": [
+    "Consider optimizing cost structure",
+    "Explore additional funding sources",
+    "Develop job training programs"
+  ],
+  "created_at": "annotation=NoneType required=False default_factory=time",
+  "updated_at": "annotation=NoneType required=False default_factory=time"
+}

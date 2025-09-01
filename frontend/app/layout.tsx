@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import VisualizationNav from '../components/visualization-nav'
 
 export const metadata: Metadata = {
   title: 'Cuttlefish Labs - AI-Powered Innovation Platform',
@@ -61,6 +62,7 @@ export default function RootLayout({
         {/* Removed apple-touch-icon and manifest to prevent 404s */}
       </head>
       <body className="antialiased bg-slate-900 text-white">
+        <VisualizationNav />
         {children}
       </body>
     </html>
