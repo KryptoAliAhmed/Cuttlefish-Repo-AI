@@ -46,6 +46,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Import new components
+from prediction_aggregator import prediction_aggregator, ModelType
+from cohere_reranker import cohere_reranker, RerankResult
+
 # === Swarm Protocol Integration ===
 from swarm_protocol import (
     SwarmProtocolManager, 
@@ -1712,8 +1716,238 @@ async def get_latest_kernel_scores() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error getting latest kernel scores: {e}")
         return []
+# === Enhanced RAG Models ===
+class PredictionAggregationRequest(BaseModel):
+    task: str
+    context: str
+    models: Optional[List[str]] = None
+
+class PredictionAggregationResponse(BaseModel):
+    consensus_prediction: Dict[str, Any]
+    confidence: float
+    bias_reduction: float
+    model_contributions: Dict[str, float]
+    disagreement_score: float
+    ensemble_metrics: Dict[str, float]
+
+class RerankRequest(BaseModel):
+    query: str
+    documents: List[str]
+    top_n: int = Field(default=10, le=50)
+    context: Optional[Dict[str, Any]] = None
+
+class RerankResponse(BaseModel):
+    results: List[Dict[str, Any]]
+    performance_metrics: Dict[str, Any]
+
+# === Enhanced RAG Endpoints ===
+
+@app.post("/rag/predict-aggregate", response_model=PredictionAggregationResponse)
+async def predict_aggregate(request: PredictionAggregationRequest):
+    """Aggregate predictions from multiple AI models to reduce bias"""
+    try:
+        # Prepare LLM clients
+        llm_clients = {}
+        if LLM_PROVIDER == "openai" and client:
+            llm_clients['openai'] = client
+        if LLM_PROVIDER == "gemini" and gemini_client:
+            llm_clients['gemini'] = gemini_client
+        if LLM_PROVIDER == "xai" and xai_client:
+            llm_clients['xai'] = xai_client
+        
+        # Perform prediction aggregation
+        result = await prediction_aggregator.aggregate_predictions(
+            request.task,
+            request.context,
+            llm_clients
+        )
+        
+        # Log to TrustGraph
+        await log_prediction_aggregation(request.task, result)
+        
+        return PredictionAggregationResponse(
+            consensus_prediction=result.consensus_prediction,
+            confidence=result.confidence,
+            bias_reduction=result.bias_reduction,
+            model_contributions=result.model_contributions,
+            disagreement_score=result.disagreement_score,
+            ensemble_metrics=result.ensemble_metrics
+        )
+        
+    except Exception as e:
+        logger.error(f"Prediction aggregation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rag/rerank", response_model=RerankResponse)
+async def rerank_documents(request: RerankRequest):
+    """Rerank documents using Cohere Rerank for improved relevance"""
+    try:
+        # Perform reranking
+        if request.context:
+            results = await cohere_reranker.rerank_with_context(
+                request.query,
+                request.documents,
+                request.context,
+                request.top_n
+            )
+        else:
+            results = await cohere_reranker.rerank_documents(
+                request.query,
+                request.documents,
+                request.top_n
+            )
+        
+        # Convert results to response format
+        response_results = []
+        for result in results:
+            response_results.append({
+                "document": result.document,
+                "relevance_score": result.relevance_score,
+                "original_index": result.original_index,
+                "rerank_rank": result.rerank_rank,
+                "metadata": result.metadata
+            })
+        
+        # Get performance metrics
+        performance_metrics = cohere_reranker.get_performance_stats()
+        
+        return RerankResponse(
+            results=response_results,
+            performance_metrics=performance_metrics
+        )
+        
+    except Exception as e:
+        logger.error(f"Document reranking failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/rag/aggregation-stats")
+async def get_aggregation_stats():
+    """Get prediction aggregation statistics"""
+    try:
+        stats = prediction_aggregator.get_aggregation_stats()
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        logger.error(f"Failed to get aggregation stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/rag/rerank-stats")
+async def get_rerank_stats():
+    """Get Cohere rerank statistics"""
+    try:
+        stats = cohere_reranker.get_performance_stats()
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        logger.error(f"Failed to get rerank stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rag/test-capabilities")
+async def test_enhanced_capabilities():
+    """Test enhanced RAG capabilities"""
+    try:
+        # Test prediction aggregation
+        agg_test = await prediction_aggregator.aggregate_predictions(
+            "Test ESG scoring",
+            "Solar energy project with $1M investment",
+            {}
+        )
+        
+        # Test Cohere rerank
+        rerank_test = await cohere_reranker.test_rerank_capability()
+        
+        return {
+            "status": "success",
+            "prediction_aggregation": {
+                "available": True,
+                "bias_reduction": agg_test.bias_reduction,
+                "confidence": agg_test.confidence
+            },
+            "cohere_rerank": rerank_test
+        }
+        
+    except Exception as e:
+        logger.error(f"Capability test failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+async def log_prediction_aggregation(task: str, result):
+    """Log prediction aggregation to TrustGraph"""
+    try:
+        action = {
+            "agent": "PredictionAggregator",
+            "action": "aggregate_predictions",
+            "tool": "multi_model_ensemble",
+            "vault": "esg_kernels",
+            "proposal": task,
+            "score": result.confidence,
+            "comment": f"Bias reduction: {result.bias_reduction:.3f}, Disagreement: {result.disagreement_score:.3f}"
+        }
+        
+        trustgraph.append_action(action)
+        
+    except Exception as e:
+        logger.error(f"Failed to log prediction aggregation: {e}")
+
+# === Enhanced Kernel Scoring with Prediction Aggregation ===
+
+async def compute_ai_kernel_scores_enhanced(financial_data: Dict, ecological_data: Dict, social_data: Dict, project_name: str) -> Dict[str, Any]:
+    """Enhanced AI kernel scoring using prediction aggregation"""
+    try:
+        # Create task description
+        task = f"ESG scoring for {project_name}"
+        context = f"""
+        Project: {project_name}
+        Financial Data: {financial_data}
+        Ecological Data: {ecological_data}
+        Social Data: {social_data}
+        """
+        
+        # Use prediction aggregation instead of single model
+        aggregated_result = await prediction_aggregator.aggregate_predictions(
+            task, context, {}
+        )
+        
+        # Extract scores from consensus prediction
+        consensus = aggregated_result.consensus_prediction
+        
+        return {
+            "financial": consensus.get("financial_score", 75),
+            "ecological": consensus.get("ecological_score", 80),
+            "social": consensus.get("social_score", 70),
+            "analysis": {
+                "method": "prediction_aggregation",
+                "bias_reduction": aggregated_result.bias_reduction,
+                "model_contributions": aggregated_result.model_contributions,
+                "disagreement_score": aggregated_result.disagreement_score
+            },
+            "confidence": aggregated_result.confidence
+        }
+        
+    except Exception as e:
+        logger.error(f"Enhanced AI scoring failed: {e}")
+        return compute_fallback_scores(financial_data, ecological_data, social_data)
+
 async def log_kernel_evaluation(project_id: str, scores: Dict, overall_score: float):
     """Log kernel evaluation to TrustGraph."""
+    try:
+        action = {
+            "agent": "KernelEvaluator",
+            "action": "evaluate_project",
+            "tool": "ai_kernel_scoring",
+            "vault": "esg_kernels",
+            "proposal": project_id,
+            "score": overall_score,
+            "comment": f"AI-driven kernel evaluation: F={scores['financial']}, E={scores['ecological']}, S={scores['social']}"
+        }
+        
+        trustgraph.append_action(action)
+        
+    except Exception as e:
+        logger.error(f"Enhanced AI scoring failed: {e}")
+        return compute_fallback_scores(financial_data, ecological_data, social_data)
+
+async def log_kernel_evaluation(project_id: str, scores: Dict, overall_score: float):
     try:
         action = {
             "agent": "KernelEvaluator",
