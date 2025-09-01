@@ -16,6 +16,7 @@ import { CuttlefishDashboard } from "@/components/cuttlefish-dashboard"
 import { KernelScoresDashboard } from "@/components/kernel-scores-dashboard"
 import { MultisigDashboard } from "@/components/multisig-dashboard"
 import VoiceTranscript from "@/components/voice-transcript"
+import SwarmProtocolDashboard from "@/components/swarm-protocol-dashboard"
 
 export default function CuttlefishWidget() {
   const [state, setState] = useState("idle")
@@ -307,6 +308,24 @@ export default function CuttlefishWidget() {
           </div>
         </div>
       </div>
+
+      {/* Swarm Protocol Dashboard Section */}
+      <section id="swarm-protocol" className="relative py-20 bg-gradient-to-br from-slate-800 to-purple-900">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-4xl font-bold text-white mb-4">
+              Swarm Protocol Dashboard
+            </h2>
+            <p className="text-xl text-purple-200 max-w-3xl mx-auto">
+              Monitor multi-agent orchestration, TrustGraph transparency, and workflow execution in real-time
+            </p>
+          </div>
+          
+          <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-purple-500/20 p-6">
+            <SwarmProtocolDashboard />
+          </div>
+        </div>
+      </section>
 
       {/* Footer */}
       <footer className="relative bg-black/40 backdrop-blur-md border-t border-purple-500/20 mt-20">

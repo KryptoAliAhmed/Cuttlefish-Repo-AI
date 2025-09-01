@@ -46,6 +46,223 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# === Swarm Protocol Integration ===
+from swarm_protocol import (
+    SwarmProtocolManager, 
+    AgentType, 
+    WorkflowType, 
+    SwarmTask,
+    AgentAction
+)
+
+# Initialize Swarm Protocol Manager
+swarm_manager = SwarmProtocolManager()
+
+# === Swarm Protocol Pydantic Models ===
+class SwarmTraceRequest(BaseModel):
+    agent: str
+    action: str
+    tool: str
+    vault: Optional[str] = None
+    proposal: Optional[str] = None
+    score: Optional[float] = None
+    comment: Optional[str] = None
+
+class SwarmTraceResponse(BaseModel):
+    status: str
+    entry: Dict[str, Any]
+
+class SwarmWorkflowRequest(BaseModel):
+    title: str
+    description: str
+    workflow_type: str  # "sequential", "parallel", "hybrid"
+    agents: List[str]
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+class SwarmWorkflowResponse(BaseModel):
+    task_id: str
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    audit_log: List[str] = Field(default_factory=list)
+
+class TrustGraphRequest(BaseModel):
+    agent_type: Optional[str] = None
+    limit: int = Field(default=100, le=1000)
+
+class TrustGraphResponse(BaseModel):
+    entries: List[Dict[str, Any]]
+    total_count: int
+    latest_hash: Optional[str] = None
+
+# === Swarm Protocol Endpoints ===
+
+@app.post("/swarm/trace", response_model=SwarmTraceResponse)
+async def swarm_trace(request: SwarmTraceRequest):
+    """Log agent action to TrustGraph"""
+    try:
+        # Convert string agent type to enum
+        agent_type_map = {
+            "BuilderAgent": AgentType.BUILDER_AGENT,
+            "SignalAgent": AgentType.SIGNAL_AGENT,
+            "PermitAgent": AgentType.PERMIT_AGENT,
+            "RefactorAgent": AgentType.REFACTOR_AGENT,
+            "PredictiveAgent": AgentType.PREDICTIVE_AGENT,
+            "ComplianceAgent": AgentType.COMPLIANCE_AGENT,
+            "MetaAuditor": AgentType.META_AUDITOR
+        }
+        
+        agent_type = agent_type_map.get(request.agent, AgentType.BUILDER_AGENT)
+        
+        # Create agent action
+        action = AgentAction(
+            agent_id=request.agent,
+            agent_type=agent_type,
+            action=request.action,
+            tool=request.tool,
+            vault=request.vault,
+            proposal=request.proposal,
+            score=request.score,
+            comment=request.comment
+        )
+        
+        # Log to TrustGraph
+        entry = await swarm_manager.protocol.log_agent_action(action)
+        
+        return SwarmTraceResponse(
+            status="logged",
+            entry={
+                "entry_id": entry.entry_id,
+                "agent_action": {
+                    "agent_id": entry.agent_action.agent_id,
+                    "agent_type": entry.agent_action.agent_type.value,
+                    "action": entry.agent_action.action,
+                    "tool": entry.agent_action.tool,
+                    "timestamp": entry.agent_action.timestamp
+                },
+                "current_hash": entry.current_hash,
+                "previous_hash": entry.previous_hash
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Swarm trace failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to log agent action: {str(e)}")
+
+@app.post("/swarm/workflow", response_model=SwarmWorkflowResponse)
+async def swarm_workflow(request: SwarmWorkflowRequest):
+    """Execute a Swarm Protocol workflow"""
+    try:
+        # Convert string workflow type to enum
+        workflow_type_map = {
+            "sequential": WorkflowType.SEQUENTIAL,
+            "parallel": WorkflowType.PARALLEL,
+            "hybrid": WorkflowType.HYBRID
+        }
+        
+        workflow_type = workflow_type_map.get(request.workflow_type, WorkflowType.SEQUENTIAL)
+        
+        # Convert string agents to enums
+        agent_type_map = {
+            "BuilderAgent": AgentType.BUILDER_AGENT,
+            "SignalAgent": AgentType.SIGNAL_AGENT,
+            "PermitAgent": AgentType.PERMIT_AGENT,
+            "RefactorAgent": AgentType.REFACTOR_AGENT,
+            "PredictiveAgent": AgentType.PREDICTIVE_AGENT,
+            "ComplianceAgent": AgentType.COMPLIANCE_AGENT,
+            "MetaAuditor": AgentType.META_AUDITOR
+        }
+        
+        agents = [agent_type_map.get(agent, AgentType.BUILDER_AGENT) for agent in request.agents]
+        
+        # Create and execute workflow
+        task = await swarm_manager.create_workflow(
+            title=request.title,
+            description=request.description,
+            workflow_type=workflow_type,
+            agents=agents,
+            context=request.context
+        )
+        
+        result = await swarm_manager.execute_workflow(task)
+        
+        return SwarmWorkflowResponse(
+            task_id=task.task_id,
+            status=task.status.value,
+            result=result,
+            audit_log=task.audit_log
+        )
+        
+    except Exception as e:
+        logger.error(f"Swarm workflow failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to execute workflow: {str(e)}")
+
+@app.get("/swarm/trustgraph", response_model=TrustGraphResponse)
+async def get_trust_graph(agent_type: Optional[str] = None, limit: int = 100):
+    """Get TrustGraph entries"""
+    try:
+        # Convert string agent type to enum if provided
+        agent_type_enum = None
+        if agent_type:
+            agent_type_map = {
+                "BuilderAgent": AgentType.BUILDER_AGENT,
+                "SignalAgent": AgentType.SIGNAL_AGENT,
+                "PermitAgent": AgentType.PERMIT_AGENT,
+                "RefactorAgent": AgentType.REFACTOR_AGENT,
+                "PredictiveAgent": AgentType.PREDICTIVE_AGENT,
+                "ComplianceAgent": AgentType.COMPLIANCE_AGENT,
+                "MetaAuditor": AgentType.META_AUDITOR
+            }
+            agent_type_enum = agent_type_map.get(agent_type)
+        
+        entries = await swarm_manager.get_trust_graph(agent_type_enum, limit)
+        
+        # Get latest hash
+        latest_hash = None
+        if entries:
+            latest_hash = entries[-1].get('current_hash')
+        
+        return TrustGraphResponse(
+            entries=entries,
+            total_count=len(entries),
+            latest_hash=latest_hash
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get TrustGraph: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get TrustGraph: {str(e)}")
+
+@app.get("/swarm/workflow/{task_id}")
+async def get_workflow_status(task_id: str):
+    """Get status of a specific workflow"""
+    try:
+        status = await swarm_manager.get_workflow_status(task_id)
+        if not status:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return status
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get workflow status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get workflow status: {str(e)}")
+
+@app.get("/swarm/agents")
+async def get_swarm_agents():
+    """Get list of available agents"""
+    try:
+        agents = []
+        for agent_id, agent in swarm_manager.protocol.agents.items():
+            agents.append({
+                "agent_id": agent_id,
+                "agent_type": agent.agent_type.value,
+                "status": "active"
+            })
+        return {"agents": agents}
+        
+    except Exception as e:
+        logger.error(f"Failed to get agents: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get agents: {str(e)}")
+
 # === Load environment variables ===
 load_dotenv()
 
@@ -1563,3 +1780,30 @@ def _generate_recommendations(metrics: EvaluationMetrics, analysis: Dict[str, An
         recommendations.append("Improve accuracy through better training data or model fine-tuning")
     
     return recommendations
+
+# === Startup Event ===
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the application on startup."""
+    global index, documents, chunk_sources
+    
+    # Create necessary directories
+    Path("test").mkdir(exist_ok=True)
+    
+    # Load persistent data
+    load_persistent_data()
+    
+    # Build index if documents exist but index doesn't
+    if documents and not index:
+        embed_and_index()
+        save_persistent_data()
+    
+    # Initialize Swarm Protocol agents
+    await swarm_manager.initialize_agents()
+    
+    logger.info("Application startup complete")
+
+# === Main Entry Point ===
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5002)
