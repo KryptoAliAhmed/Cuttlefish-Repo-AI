@@ -1,0 +1,25 @@
+{
+  "name": "cuttlefish-backend",
+  "version": "1.0.0",
+  "description": "CuttleFish Backend API Services",
+  "main": "start_fastapi.py",
+  "scripts": {
+    "start": "python start_fastapi.py",
+    "dev": "python start_fastapi.py",
+    "install-deps": "pip install -r requirements.txt",
+    "test": "python -m pytest",
+    "lint": "python -m flake8 .",
+    "format": "python -m black ."
+  },
+  "keywords": [
+    "fastapi",
+    "rag",
+    "ai",
+    "cuttlefish"
+  ],
+  "author": "CuttleFish Labs",
+  "license": "MIT",
+  "engines": {
+    "python": ">=3.8"
+  }
+}
