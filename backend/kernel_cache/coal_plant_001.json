@@ -1,0 +1,73 @@
+{
+  "project_id": "coal_plant_001",
+  "project_name": "Coal Power Plant",
+  "project_type": "industrial",
+  "financial": {
+    "score": 81.5,
+    "confidence": 0.75,
+    "breakdown": {
+      "roi": 88.3,
+      "cost_efficiency": 67.0,
+      "funding_stability": 90,
+      "apy_projection": 100,
+      "market_volatility": 70,
+      "liquidity_risk": 60
+    },
+    "reasoning": "Financial evaluation using Sharpe ratio (ROI: 25.0%, APY: 15.0%), funding: private, cost: $5,000,000",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "financial_formulas"
+    ]
+  },
+  "ecological": {
+    "score": 23.9,
+    "confidence": 0.8,
+    "breakdown": {
+      "carbon_impact": 29.5,
+      "renewable_energy_mix": 0.0,
+      "material_sustainability": 30,
+      "water_efficiency": 40,
+      "waste_management": 30
+    },
+    "reasoning": "Ecological evaluation: 5000 tons CO2 impact, 0.0% renewable energy, unsustainable materials, low water efficiency, incineration waste management",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "environmental_science_formulas"
+    ]
+  },
+  "social": {
+    "score": 39.0,
+    "confidence": 0.75,
+    "breakdown": {
+      "job_creation": 100,
+      "community_benefit": 10,
+      "housing_equity": 20,
+      "regional_impact": 20,
+      "regulatory_compliance": 30
+    },
+    "reasoning": "Social evaluation: 100 direct jobs (200.0 total impact), negative community benefit, gentrification housing equity, negative regional impact, non_compliant compliance",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "social_impact_formulas"
+    ]
+  },
+  "overall_score": 48.0,
+  "overall_confidence": 0.77,
+  "risk_factors": [
+    "Environmental concerns",
+    "Social impact risks",
+    "High carbon footprint"
+  ],
+  "recommendations": [
+    "Increase renewable energy integration",
+    "Implement sustainable material sourcing",
+    "Enhance community engagement",
+    "Expand job creation initiatives",
+    "Increase renewable energy percentage"
+  ],
+  "created_at": "annotation=NoneType required=False default_factory=time",
+  "updated_at": "annotation=NoneType required=False default_factory=time"
+}

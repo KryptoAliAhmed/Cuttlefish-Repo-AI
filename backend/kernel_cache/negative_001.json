@@ -1,0 +1,79 @@
+{
+  "project_id": "negative_001",
+  "project_name": "Failing Business Venture",
+  "project_type": "commercial",
+  "financial": {
+    "score": 35.5,
+    "confidence": 0.75,
+    "breakdown": {
+      "roi": 0,
+      "cost_efficiency": 50.0,
+      "funding_stability": 50,
+      "apy_projection": 0,
+      "market_volatility": 65,
+      "liquidity_risk": 90
+    },
+    "reasoning": "Financial evaluation using Sharpe ratio (ROI: -5.0%, APY: -2.0%), funding: unknown, cost: $100,000",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "financial_formulas"
+    ]
+  },
+  "ecological": {
+    "score": 43.4,
+    "confidence": 0.8,
+    "breakdown": {
+      "carbon_impact": 50.5,
+      "renewable_energy_mix": 25.0,
+      "material_sustainability": 60,
+      "water_efficiency": 40,
+      "waste_management": 40
+    },
+    "reasoning": "Ecological evaluation: 200 tons CO2 impact, 10.0% renewable energy, conventional materials, low water efficiency, landfill waste management",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "environmental_science_formulas"
+    ]
+  },
+  "social": {
+    "score": 35.0,
+    "confidence": 0.75,
+    "breakdown": {
+      "job_creation": 18.0,
+      "community_benefit": 30,
+      "housing_equity": 40,
+      "regional_impact": 40,
+      "regulatory_compliance": 60
+    },
+    "reasoning": "Social evaluation: 2 direct jobs (3.6 total impact), minimal community benefit, luxury housing equity, minimal regional impact, partially_compliant compliance",
+    "last_updated": "annotation=NoneType required=False default_factory=time",
+    "data_sources": [
+      "rule_based_evaluation",
+      "social_impact_formulas"
+    ]
+  },
+  "overall_score": 37.9,
+  "overall_confidence": 0.77,
+  "risk_factors": [
+    "Low financial viability",
+    "Environmental concerns",
+    "Social impact risks",
+    "Low ROI potential",
+    "High carbon footprint",
+    "Limited job creation"
+  ],
+  "recommendations": [
+    "Consider optimizing cost structure",
+    "Explore additional funding sources",
+    "Increase renewable energy integration",
+    "Implement sustainable material sourcing",
+    "Enhance community engagement",
+    "Expand job creation initiatives",
+    "Increase renewable energy percentage",
+    "Develop job training programs"
+  ],
+  "created_at": "annotation=NoneType required=False default_factory=time",
+  "updated_at": "annotation=NoneType required=False default_factory=time"
+}

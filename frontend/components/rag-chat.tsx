@@ -15,7 +15,7 @@ import { ContextWindow } from "@/components/context-window"
 import { AuditLog } from "@/components/audit-log"
 import type { AuditLogEntry } from "@/lib/types"
 import { MockBuilderAgentFactoryCWA } from "@/lib/agent-factory-mock"
-import { calculateOverallScore, FIXED_KERNEL_WEIGHTS, getPerformanceTier } from "@/lib/esg-scorer"
+import { getPerformanceTier } from "@/lib/esg-scorer"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5002"
 const SIDEBAR_KEY = "cuttlefish_rag_sidebar_pct"
@@ -225,8 +225,9 @@ export function RAGChat({ onOpenVoiceMode, onKernelScores }: { onOpenVoiceMode?:
             setEcologicalKernel(eco)
             setSocialKernel(soc)
             onKernelScores?.({ financial: fin, ecological: eco, social: soc })
+            // Use the overall score from the superior kernel engine instead of hardcoded calculation
             const overall = Number(esg?.overall?.score)
-            setOverallESG(Number.isFinite(overall) ? overall : calculateOverallScore({ financial: fin, ecological: eco, social: soc }, FIXED_KERNEL_WEIGHTS))
+            setOverallESG(Number.isFinite(overall) ? overall : 0)
           } else {
             setFinancialKernel(0)
             setEcologicalKernel(0)

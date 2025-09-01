@@ -19,6 +19,8 @@ export function KernelScoresDashboard() {
 
   useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5002";
+    // Note: This endpoint returns mock data for demonstration
+    // In production, this should be replaced with real project scoring data
     fetch(`${API}/kernel/scores`)
       .then((res) => res.json())
       .then((data) => {

@@ -65,7 +65,7 @@ export function EnhancedKernelScoring() {
         ws.onmessage = (event) => {
           const data = JSON.parse(event.data)
           if (data.type === "kernel_update") {
-            // Update scores with real-time data
+            // Update scores with real-time data from superior kernel engine
             setScores(prev => {
               const updated = [...prev]
               data.scores.forEach((newScore: any) => {
@@ -77,7 +77,7 @@ export function EnhancedKernelScoring() {
                       financial: newScore.financial,
                       ecological: newScore.ecological,
                       social: newScore.social,
-                      overall: calculateOverallScore(newScore)
+                      overall: newScore.overall || 0  // Use overall score from superior engine
                     },
                     timestamp: newScore.timestamp
                   }
@@ -117,12 +117,9 @@ export function EnhancedKernelScoring() {
   }, [API_BASE])
 
   const calculateOverallScore = (scores: any) => {
-    const weights = { financial: 0.55, ecological: 0.30, social: 0.15 }
-    return (
-      scores.financial * weights.financial +
-      scores.ecological * weights.ecological +
-      scores.social * weights.social
-    )
+    // This function is no longer needed since the superior kernel engine
+    // calculates the overall score with dynamic weights
+    return scores.overall || 0
   }
 
   const handleSubmitProject = async () => {
@@ -133,6 +130,7 @@ export function EnhancedKernelScoring() {
 
     setLoading(true)
     try {
+      // Use the superior kernel engine endpoint
       const response = await fetch(`${API_BASE}/kernel/scores`, {
         method: "POST",
         headers: {
@@ -143,8 +141,18 @@ export function EnhancedKernelScoring() {
 
       if (response.ok) {
         const result = await response.json()
-        setScores(prev => [result, ...prev])
-        toast.success("Project scored successfully!")
+        
+        // The result now comes from the superior kernel engine
+        const scoredProject: KernelScore = {
+          project_id: result.project_id,
+          project_name: result.project_name,
+          scores: result.scores,
+          ai_analysis: result.ai_analysis || {},
+          confidence: result.confidence || 0.85,
+          timestamp: result.timestamp
+        }
+        setScores(prev => [scoredProject, ...prev])
+        toast.success("Project scored successfully with superior kernel engine!")
         
         // Reset form
         setSubmission({
