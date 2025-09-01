@@ -334,20 +334,21 @@ else:
     logger.info("GEMINI_API_KEY not set. Gemini will be disabled unless provided.")
 
 # === FastAPI app ===
-app = FastAPI(
-    title="Cuttlefish RAG API",
-    description="A FastAPI-based RAG (Retrieval Augmented Generation) system for document processing and AI-powered responses",
-    version="1.0.0"
-)
+# Note: app is already defined above, this is a duplicate
+# app = FastAPI(
+#     title="Cuttlefish RAG API",
+#     description="A FastAPI-based RAG (Retrieval Augmented Generation) system for document processing and AI-powered responses",
+#     version="1.0.0"
+# )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add CORS middleware (already added above)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],  # Configure this properly for production
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # === Constants ===
 # Default data directory inside app root (works in Docker and local)

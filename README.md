@@ -42,7 +42,7 @@ CuttleFish is a cutting-edge AI system that combines **Retrieval Augmented Gener
 
 ### Installation
 
-```bash
+   ```bash
 # Clone the repository
 git clone https://github.com/KryptoAliAhmed/Cuttlefish-Repo-AI.git
 cd Cuttlefish-Repo-AI
@@ -64,7 +64,7 @@ npm install
 
 Create environment files for each component:
 
-```bash
+   ```bash
 # Backend (.env)
 OPENAI_API_KEY=your_openai_api_key
 GEMINI_API_KEY=your_gemini_api_key
@@ -76,7 +76,7 @@ NEXT_PUBLIC_API_URL=http://localhost:5002
 
 ### Running the Application
 
-```bash
+   ```bash
 # Start Backend
 cd backend
 python start_fastapi.py
@@ -87,8 +87,8 @@ npm run dev
 
 # Start Widget (optional)
 cd widget
-npm run dev
-```
+   npm run dev
+   ```
 
 ---
 
@@ -222,7 +222,7 @@ const nextConfig = {
 
 ### Docker Deployment
 
-```bash
+  ```bash
 # Build and run with Docker Compose
 docker-compose up --build
 

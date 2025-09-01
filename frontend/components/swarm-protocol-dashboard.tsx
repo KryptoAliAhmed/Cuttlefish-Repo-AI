@@ -114,7 +114,7 @@ export function SwarmProtocolDashboard() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [trustGraphEntries, setTrustGraphEntries] = useState<TrustGraphEntry[]>([])
   const [activeWorkflows, setActiveWorkflows] = useState<WorkflowStatus[]>([])
-  const [selectedAgentType, setSelectedAgentType] = useState<string>("")
+  const [selectedAgentType, setSelectedAgentType] = useState<string>("all")
   const [limit, setLimit] = useState(50)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -171,7 +171,7 @@ export function SwarmProtocolDashboard() {
     try {
       setIsLoading(true)
       const params = new URLSearchParams()
-      if (selectedAgentType) params.append('agent_type', selectedAgentType)
+              if (selectedAgentType && selectedAgentType !== "all") params.append('agent_type', selectedAgentType)
       params.append('limit', limit.toString())
       
       const response = await fetch(`${API_BASE}/swarm/trustgraph?${params}`)
@@ -626,14 +626,14 @@ export function SwarmProtocolDashboard() {
                     <SelectTrigger className="w-48">
                       <SelectValue placeholder="All Agents" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Agents</SelectItem>
-                      {availableAgents.map(agent => (
-                        <SelectItem key={agent} value={agent}>
-                          {agent}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
+                                          <SelectContent>
+                        <SelectItem value="all">All Agents</SelectItem>
+                        {availableAgents.map(agent => (
+                          <SelectItem key={agent} value={agent}>
+                            {agent}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                   </Select>
                 </div>
                 
