@@ -57,9 +57,13 @@ class AgentAction:
     proposal: Optional[str] = None
     score: Optional[float] = None
     comment: Optional[str] = None
-    timestamp: float = Field(default_factory=time.time)
+    timestamp: float = None
     context: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
+    
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = time.time()
 
 @dataclass
 class TrustGraphEntry:
@@ -381,9 +385,24 @@ class SwarmProtocol:
     
     def _generate_hash(self, entry: TrustGraphEntry) -> str:
         """Generate hash for TrustGraph entry"""
+        # Convert AgentAction to dict, handling FieldInfo objects
+        action_dict = {
+            'agent_id': entry.agent_action.agent_id,
+            'agent_type': entry.agent_action.agent_type.value,
+            'action': entry.agent_action.action,
+            'tool': entry.agent_action.tool,
+            'vault': entry.agent_action.vault,
+            'proposal': entry.agent_action.proposal,
+            'score': entry.agent_action.score,
+            'comment': entry.agent_action.comment,
+            'timestamp': entry.agent_action.timestamp,
+            'context': entry.agent_action.context,
+            'metadata': entry.agent_action.metadata
+        }
+        
         data = {
             'entry_id': entry.entry_id,
-            'agent_action': asdict(entry.agent_action),
+            'agent_action': action_dict,
             'previous_hash': entry.previous_hash,
             'timestamp': time.time()
         }
@@ -411,9 +430,24 @@ class SwarmProtocol:
     async def _save_trust_graph_entry(self, entry: TrustGraphEntry):
         """Save TrustGraph entry to file"""
         try:
+            # Convert AgentAction to dict, handling FieldInfo objects
+            action_dict = {
+                'agent_id': entry.agent_action.agent_id,
+                'agent_type': entry.agent_action.agent_type.value,
+                'action': entry.agent_action.action,
+                'tool': entry.agent_action.tool,
+                'vault': entry.agent_action.vault,
+                'proposal': entry.agent_action.proposal,
+                'score': entry.agent_action.score,
+                'comment': entry.agent_action.comment,
+                'timestamp': entry.agent_action.timestamp,
+                'context': entry.agent_action.context,
+                'metadata': entry.agent_action.metadata
+            }
+            
             entry_data = {
                 'entry_id': entry.entry_id,
-                'agent_action': asdict(entry.agent_action),
+                'agent_action': action_dict,
                 'previous_hash': entry.previous_hash,
                 'current_hash': entry.current_hash,
                 'ipfs_reference': entry.ipfs_reference,

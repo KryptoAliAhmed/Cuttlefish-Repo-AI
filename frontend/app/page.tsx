@@ -13,7 +13,7 @@ import { Sparkles, Zap, Brain, MessageSquare, BarChart3, Shield, Mic, ArrowDown,
 const RAGChatClient = dynamic(() => import("@/components/rag-chat"), { ssr: false })
 import { RAGAgent } from "@/components/rag-agent"
 import { CuttlefishDashboard } from "@/components/cuttlefish-dashboard"
-import { KernelScoresDashboard } from "@/components/kernel-scores-dashboard"
+import { EnhancedKernelScoring } from "@/components/enhanced-kernel-scoring"
 import { MultisigDashboard } from "@/components/multisig-dashboard"
 import VoiceTranscript from "@/components/voice-transcript"
 import SwarmProtocolDashboard from "@/components/swarm-protocol-dashboard"
@@ -233,16 +233,16 @@ export default function CuttlefishWidget() {
             </div>
           </section>
 
-          {/* Kernel Scores Section */}
+          {/* Enhanced Kernel Scoring Section */}
           <section className="relative">
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+                <Brain className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-2xl font-semibold text-white">Kernel Scores</h3>
+              <h3 className="text-2xl font-semibold text-white">Enhanced Kernel Scoring</h3>
             </div>
             <div className="rounded-2xl border border-purple-500/20 bg-black/40 backdrop-blur-sm p-6 shadow-2xl">
-              <KernelScoresDashboard />
+              <EnhancedKernelScoring />
             </div>
           </section>
 

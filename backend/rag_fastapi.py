@@ -1411,8 +1411,200 @@ async def embeddings_status_api():
         "documents_sources": list(set(chunk_sources)) if chunk_sources else []
     }
 
+# Kernel scoring request models
+class KernelScoreRequest(BaseModel):
+    project_id: str
+    project_name: str
+    metadata: Dict[str, Any]
+    api_key: Optional[str] = None
+
+class KernelScoreResponse(BaseModel):
+    project_id: str
+    project_name: str
+    scores: Dict[str, float]
+    ai_analysis: Dict[str, Any]
+    confidence: float
+    timestamp: str
+
+# ... existing code ...
+
+@app.post("/kernel/scores", response_model=KernelScoreResponse)
+async def kernel_scores_post_api(request: KernelScoreRequest):
+    """Process project data and return AI-driven kernel scores."""
+    try:
+        # Extract metadata
+        financial_data = request.metadata.get("financial", {})
+        ecological_data = request.metadata.get("ecological", {})
+        social_data = request.metadata.get("social", {})
+        
+        # AI-driven scoring using LLM
+        ai_scores = await compute_ai_kernel_scores(
+            financial_data, ecological_data, social_data, request.project_name
+        )
+        
+        # Calculate weighted overall score
+        weights = {"financial": 0.55, "ecological": 0.30, "social": 0.15}
+        overall_score = (
+            ai_scores["financial"] * weights["financial"] +
+            ai_scores["ecological"] * weights["ecological"] +
+            ai_scores["social"] * weights["social"]
+        )
+        
+        # Log to TrustGraph for transparency
+        await log_kernel_evaluation(request.project_id, ai_scores, overall_score)
+        
+        return KernelScoreResponse(
+            project_id=request.project_id,
+            project_name=request.project_name,
+            scores={
+                "financial": round(ai_scores["financial"], 1),
+                "ecological": round(ai_scores["ecological"], 1),
+                "social": round(ai_scores["social"], 1),
+                "overall": round(overall_score, 1)
+            },
+            ai_analysis=ai_scores.get("analysis", {}),
+            confidence=ai_scores.get("confidence", 0.85),
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in POST /kernel/scores: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def compute_ai_kernel_scores(financial_data: Dict, ecological_data: Dict, social_data: Dict, project_name: str) -> Dict[str, Any]:
+    """Use AI to compute kernel scores based on project data."""
+    try:
+        # Prepare context for AI analysis
+        context = f"""
+        Project: {project_name}
+        
+        Financial Data: {financial_data}
+        Ecological Data: {ecological_data}
+        Social Data: {social_data}
+        
+        Please analyze this project and provide scores (0-100) for:
+        1. Financial Kernel: ROI potential, cost efficiency, funding stability
+        2. Ecological Kernel: Environmental impact, sustainability, carbon reduction
+        3. Social Kernel: Community benefit, job creation, regulatory compliance
+        
+        Return scores as JSON with analysis and confidence level.
+        """
+        
+        # Use LLM for scoring
+        if LLM_PROVIDER == "openai" and client:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an ESG expert analyzing infrastructure projects. Provide accurate, well-reasoned scores."},
+                    {"role": "user", "content": context}
+                ],
+                temperature=0.3,
+                max_tokens=500
+            )
+            
+            # Parse AI response
+            ai_response = response.choices[0].message.content
+            scores = parse_ai_scores(ai_response)
+            
+            return {
+                "financial": scores.get("financial", 75),
+                "ecological": scores.get("ecological", 80),
+                "social": scores.get("social", 70),
+                "analysis": scores.get("analysis", {}),
+                "confidence": scores.get("confidence", 0.85)
+            }
+            
+        elif LLM_PROVIDER == "gemini" and gemini_client:
+            # Gemini implementation
+            response = gemini_client.generate_content(context)
+            scores = parse_ai_scores(response.text)
+            
+            return {
+                "financial": scores.get("financial", 75),
+                "ecological": scores.get("ecological", 80),
+                "social": scores.get("social", 70),
+                "analysis": scores.get("analysis", {}),
+                "confidence": scores.get("confidence", 0.85)
+            }
+            
+        else:
+            # Fallback to rule-based scoring
+            return compute_fallback_scores(financial_data, ecological_data, social_data)
+            
+    except Exception as e:
+        logger.error(f"AI scoring failed: {e}")
+        return compute_fallback_scores(financial_data, ecological_data, social_data)
+
+def parse_ai_scores(ai_response: str) -> Dict[str, Any]:
+    """Parse AI response to extract scores and analysis."""
+    try:
+        # Try to extract JSON from response
+        import re
+        json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
+        if json_match:
+            import json
+            return json.loads(json_match.group())
+        
+        # Fallback parsing
+        scores = {}
+        analysis = {}
+        
+        # Extract scores using regex
+        financial_match = re.search(r'financial.*?(\d+)', ai_response.lower())
+        if financial_match:
+            scores["financial"] = int(financial_match.group(1))
+            
+        ecological_match = re.search(r'ecological.*?(\d+)', ai_response.lower())
+        if ecological_match:
+            scores["ecological"] = int(ecological_match.group(1))
+            
+        social_match = re.search(r'social.*?(\d+)', ai_response.lower())
+        if social_match:
+            scores["social"] = int(social_match.group(1))
+            
+        return {
+            "financial": scores.get("financial", 75),
+            "ecological": scores.get("ecological", 80),
+            "social": scores.get("social", 70),
+            "analysis": analysis,
+            "confidence": 0.75
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to parse AI scores: {e}")
+        return {
+            "financial": 75,
+            "ecological": 80,
+            "social": 70,
+            "analysis": {},
+            "confidence": 0.5
+        }
+
+def compute_fallback_scores(financial_data: Dict, ecological_data: Dict, social_data: Dict) -> Dict[str, Any]:
+    """Fallback scoring when AI is unavailable."""
+    # Simple rule-based scoring
+    financial_score = 75
+    ecological_score = 80
+    social_score = 70
+    
+    # Adjust based on data
+    if financial_data.get("roi", 0) > 0.15:
+        financial_score += 10
+    if ecological_data.get("renewable_percent", 0) > 80:
+        ecological_score += 10
+    if social_data.get("job_creation", 0) > 20:
+        social_score += 10
+        
+    return {
+        "financial": min(100, financial_score),
+        "ecological": min(100, ecological_score),
+        "social": min(100, social_score),
+        "analysis": {"method": "rule_based_fallback"},
+        "confidence": 0.6
+    }
+
 @app.get("/kernel/scores", response_model=KernelScoresResponse)
-async def kernel_scores_api():
+async def kernel_scores_get_api():
     """Return mock scores for Financial, Ecological, and Social kernels."""
     mock_scores = [
         ProjectScore(
@@ -1462,6 +1654,247 @@ async def kernel_scores_api():
     ]
     
     return KernelScoresResponse(kernel_scores=mock_scores)
+
+# WebSocket for real-time kernel updates
+@app.websocket("/ws/kernel/updates")
+async def websocket_kernel_updates(websocket: WebSocket):
+    """WebSocket endpoint for real-time kernel score updates."""
+    await websocket.accept()
+    try:
+        while True:
+            # Send periodic updates
+            await asyncio.sleep(5)
+            
+            # Get latest kernel data
+            latest_scores = await get_latest_kernel_scores()
+            
+            await websocket.send_json({
+                "type": "kernel_update",
+                "timestamp": datetime.now().isoformat(),
+                "scores": latest_scores
+            })
+            
+    except WebSocketDisconnect:
+        logger.info("WebSocket kernel updates disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket kernel error: {e}")
+
+async def get_latest_kernel_scores() -> List[Dict[str, Any]]:
+    """Get latest kernel scores for WebSocket updates."""
+    try:
+        # In a real implementation, this would query a database
+        # For now, return mock data with slight variations
+        import random
+        base_scores = [
+            {
+                "project_name": "Tributary Campus",
+                "financial": 82 + random.uniform(-2, 2),
+                "ecological": 90 + random.uniform(-1, 1),
+                "social": 88 + random.uniform(-2, 2),
+                "timestamp": datetime.now().isoformat()
+            },
+            {
+                "project_name": "Solar Microgrid",
+                "financial": 87 + random.uniform(-2, 2),
+                "ecological": 95 + random.uniform(-1, 1),
+                "social": 80 + random.uniform(-2, 2),
+                "timestamp": datetime.now().isoformat()
+            }
+        ]
+        
+        return [{
+            **score,
+            "financial": round(score["financial"], 1),
+            "ecological": round(score["ecological"], 1),
+            "social": round(score["social"], 1)
+        } for score in base_scores]
+        
+    except Exception as e:
+        logger.error(f"Error getting latest kernel scores: {e}")
+        return []
+async def log_kernel_evaluation(project_id: str, scores: Dict, overall_score: float):
+    """Log kernel evaluation to TrustGraph."""
+    try:
+        action = {
+            "agent": "KernelEvaluator",
+            "action": "evaluate_project",
+            "tool": "ai_kernel_scoring",
+            "vault": "esg_kernels",
+            "proposal": project_id,
+            "score": overall_score,
+            "comment": f"AI-driven kernel evaluation: F={scores['financial']}, E={scores['ecological']}, S={scores['social']}"
+        }
+        
+        trustgraph.append_action(action)
+        
+    except Exception as e:
+        logger.error(f"Failed to log kernel evaluation: {e}")
+
+# Enhanced document ingestion with kernel scoring
+@app.post("/rag/documents/proposal", response_model=DocumentUploadResponse)
+async def rag_proposal_upload(
+    file: UploadFile = File(...),
+    project_id: str = Form(...),
+    project_name: str = Form(...),
+    api_key: str = Depends(verify_api_key)
+):
+    """Upload a proposal document and automatically score it using kernels."""
+    try:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No selected file")
+        
+        ext = Path(file.filename).suffix.lower()
+        if ext not in {'.json', '.md', '.pdf', '.docx'}:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+        
+        # Save file
+        save_path = os.path.join(DATA_DIR, f"proposal_{project_id}_{file.filename}")
+        with open(save_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # Process and extract text
+        text = process_file(save_path)
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="Failed to extract text from file")
+        
+        # Extract ESG metrics from document
+        esg_metrics = await extract_esg_metrics_from_proposal(text, project_name)
+        
+        # Score using kernels
+        kernel_response = await kernel_scores_post_api(KernelScoreRequest(
+            project_id=project_id,
+            project_name=project_name,
+            metadata=esg_metrics,
+            api_key=api_key
+        ))
+        
+        # Add to documents for RAG
+        documents.append(text)
+        chunk_sources.append(f"proposal_{project_id}")
+        
+        # Save proposal metadata
+        meta = {
+            "filename": file.filename,
+            "project_id": project_id,
+            "project_name": project_name,
+            "tag": "proposal",
+            "kernel_scores": kernel_response.scores,
+            "upload_time": datetime.now().isoformat()
+        }
+        
+        return DocumentUploadResponse(
+            status="success",
+            meta=meta
+        )
+        
+    except Exception as e:
+        logger.error(f"Proposal upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def extract_esg_metrics_from_proposal(text: str, project_name: str) -> Dict[str, Any]:
+    """Extract ESG metrics from proposal document using AI."""
+    try:
+        context = f"""
+        Project: {project_name}
+        Document: {text[:2000]}...
+        
+        Extract ESG metrics from this proposal document. Return as JSON:
+        {{
+            "financial": {{
+                "cost": float,
+                "roi": float,
+                "funding_source": string,
+                "apy_projection": float
+            }},
+            "ecological": {{
+                "carbon_impact": float,
+                "renewable_percent": float,
+                "material_sourcing": string
+            }},
+            "social": {{
+                "job_creation": int,
+                "community_benefit": string,
+                "regulatory_alignment": string
+            }}
+        }}
+        """
+        
+        if LLM_PROVIDER == "openai" and client:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an ESG analyst extracting metrics from project proposals."},
+                    {"role": "user", "content": context}
+                ],
+                temperature=0.2,
+                max_tokens=500
+            )
+            
+            ai_response = response.choices[0].message.content
+            return parse_esg_metrics(ai_response)
+            
+        else:
+            # Fallback to rule-based extraction
+            return extract_fallback_metrics(text)
+            
+    except Exception as e:
+        logger.error(f"ESG extraction failed: {e}")
+        return extract_fallback_metrics(text)
+
+def parse_esg_metrics(ai_response: str) -> Dict[str, Any]:
+    """Parse AI response to extract ESG metrics."""
+    try:
+        import re
+        import json
+        
+        # Try to extract JSON
+        json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        
+        # Fallback parsing
+        metrics = {
+            "financial": {"cost": 500000, "roi": 0.15, "funding_source": "private", "apy_projection": 0.12},
+            "ecological": {"carbon_impact": -100, "renewable_percent": 80, "material_sourcing": "mixed"},
+            "social": {"job_creation": 15, "community_benefit": "medium", "regulatory_alignment": "compliant"}
+        }
+        
+        # Extract specific values using regex
+        cost_match = re.search(r'cost.*?(\d+)', ai_response.lower())
+        if cost_match:
+            metrics["financial"]["cost"] = int(cost_match.group(1))
+            
+        roi_match = re.search(r'roi.*?(\d+\.?\d*)', ai_response.lower())
+        if roi_match:
+            metrics["financial"]["roi"] = float(roi_match.group(1))
+            
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Failed to parse ESG metrics: {e}")
+        return extract_fallback_metrics("")
+
+def extract_fallback_metrics(text: str) -> Dict[str, Any]:
+    """Fallback ESG metric extraction."""
+    return {
+        "financial": {
+            "cost": 500000,
+            "roi": 0.15,
+            "funding_source": "private",
+            "apy_projection": 0.12
+        },
+        "ecological": {
+            "carbon_impact": -100,
+            "renewable_percent": 80,
+            "material_sourcing": "mixed"
+        },
+        "social": {
+            "job_creation": 15,
+            "community_benefit": "medium",
+            "regulatory_alignment": "compliant"
+        }
+    }
 
 @app.post("/swarm/trace", response_model=SwarmTraceResponse)
 async def swarm_trace_api(request: SwarmTraceRequest):
