@@ -1,0 +1,86 @@
+services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../deployment/frontend.Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../enviornment/frontend.env
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - /app/cache/.next
+    depends_on:
+      - backend
+    networks:
+      - cuttlefish-network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../deployment/backend.Dockerfile
+    ports:
+      - "5002:5002"
+    env_file:
+      - ../enviornment/backend.env
+    environment:
+      - PYTHONPATH=/app
+      - DATA_DIR=/app/knowledge-base
+      - DOCS_PKL_PATH=/app/storage/docs.pkl
+      - FAISS_INDEX_PATH=/app/storage/index.faiss
+      - PYTHONPYCACHEPREFIX=/app/cache/pycache
+      - RAG_LOG_PATH=/app/logs/rag_logs/rag_pipeline.log
+      - TRUSTGRAPH_PATH=/app/logs/trustgraph/trustgraph.jsonl
+      - VOICE_LOG_FILE=/app/logs/voice_transcripts/voice_transcripts.jsonl
+    volumes:
+      # Mount only the Python source files, not the entire backend directory
+      - ../backend/rag_fastapi.py:/app/rag_fastapi.py
+      - ../backend/start_fastapi.py:/app/start_fastapi.py
+      - ../backend/requirements.txt:/app/requirements.txt
+      - ../backend/package.json:/app/package.json
+      # Mount data directories from root
+      - ../knowledge-base:/app/knowledge-base:ro
+      - ../storage:/app/storage
+      - ../json-logs:/app/logs
+      - ../cache:/app/cache
+    networks:
+      - cuttlefish-network
+
+  widget:
+    build:
+      context: ../widget
+      dockerfile: ../deployment/frontend.Dockerfile
+    ports:
+      - "3001:3001"
+    env_file:
+      - ../enviornment/frontend.env
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:5002
+    volumes:
+      - ../widget:/app
+      - /app/node_modules
+      - /app/cache/.next
+    depends_on:
+      - backend
+    networks:
+      - cuttlefish-network
+
+  # Optional: Add a database if needed
+  # postgres:
+  #   image: postgres:15
+  #   environment:
+  #     POSTGRES_DB: cuttlefish
+  #     POSTGRES_USER: cuttlefish
+  #     POSTGRES_PASSWORD: cuttlefish
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - cuttlefish-network
+
+networks:
+  cuttlefish-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
