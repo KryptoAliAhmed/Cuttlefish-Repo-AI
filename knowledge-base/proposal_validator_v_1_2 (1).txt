@@ -1,0 +1,185 @@
+// contracts/proposal_validator.aiken
+//
+// Enhanced DAO governance contract for Cuttlefish AI Labs.
+// Implements logarithmic weighted voting with diminishing returns for $NEXAI infrastructure funding.
+//
+// Authors: Cuttlefish Labs & xAI Partners
+// Version: 1.5.0
+// SPDX-License-Identifier: MIT
+
+use aiken/list
+use aiken/transaction.{Input, Transaction, Output}
+use aiken/transaction/value.{AssetName, PolicyId, Value}
+use aiken/error.{expect_with_error}
+
+type ProposalStatus {
+  Voting
+  Passed
+  Failed
+  Vetoed
+}
+
+type AIAnalysis {
+  url: String,
+  type: String
+}
+
+type ProposalDatum {
+  id: Int,
+  proposer: PubKeyHash,
+  description: String,
+  voting_deadline_posix: Int,
+  veto_deadline_posix: Int,
+  votes_for: Int,
+  votes_against: Int,
+  total_voting_power: Int,
+  total_staked_tokens: Int,
+  status: ProposalStatus,
+  quorum: Int,
+  enactment_delay: Int,
+  ai_analyses: List<AIAnalysis>,
+  founder_policy_id: PolicyId,
+  normal_policy_id: PolicyId,
+  ai_owner_policy_id: PolicyId,
+  min_stake_threshold: Int,
+  max_voting_power_cap: Int
+}
+
+type ProposalAction {
+  Create
+  Vote { support: Bool, staked_tokens: Int, voting_power: Int }
+  Veto
+  Resolve
+}
+
+fn signed_with_token(tx: Transaction, policy_id: PolicyId, min_quantity: Int) -> Bool {
+    list.any(tx.inputs, fn(input: Input) -> Bool {
+        value.policy_quantity(input.output.value, policy_id) >= min_quantity
+    })
+}
+
+fn total_token_quantity(tx: Transaction, policy_id: PolicyId) -> Int {
+    list.foldl(tx.inputs, 0, fn(acc, input: Input) -> Int {
+        acc + value.policy_quantity(input.output.value, policy_id)
+    })
+}
+
+fn posix_to_slot(posix: Int) -> Int {
+    posix / 1000
+}
+
+fn log2_approx(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        let x = n + 1
+        let count = 0
+        while x > 1 {
+            x = x / 2
+            count = count + 1
+        }
+        count
+    }
+}
+
+fn calculate_voting_power(staked_tokens: Int) -> Int {
+    let base_power = log2_approx(staked_tokens)
+    let bonus_multiplier = 150
+    (base_power * bonus_multiplier) / 100
+}
+
+validator(datum: ProposalDatum, redeemer: ProposalAction, context: ScriptContext) -> Bool {
+    let tx = context.transaction
+    let current_time = posix_to_slot(context.transaction_info.time_range.start)
+
+    when redeemer is {
+        Create -> {
+            let creator_is_authorized =
+                signed_with_token(tx, datum.normal_policy_id, 1) ||
+                signed_with_token(tx, datum.ai_owner_policy_id, 1)
+            let initial_state_is_correct =
+                datum.status == Voting &&
+                datum.votes_for == 0 &&
+                datum.votes_against == 0 &&
+                datum.total_voting_power == 0 &&
+                datum.total_staked_tokens == 0 &&
+                datum.quorum > 0 &&
+                datum.min_stake_threshold == 100 &&
+                datum.voting_deadline_posix > context.transaction_info.time_range.start &&
+                datum.veto_deadline_posix > datum.voting_deadline_posix
+            creator_is_authorized && initial_state_is_correct
+        }
+
+        Vote { support, staked_tokens, voting_power } -> {
+            let total_tokens = total_token_quantity(tx, datum.normal_policy_id)
+            let voter_is_authorized = total_tokens >= staked_tokens && staked_tokens > 0
+            let meets_threshold = staked_tokens >= datum.min_stake_threshold
+            let expected_voting_power = calculate_voting_power(staked_tokens)
+            let power_is_correct = voting_power == expected_voting_power
+            let capped_voting_power = if voting_power > datum.max_voting_power_cap {
+                datum.max_voting_power_cap
+            } else {
+                voting_power
+            }
+            let within_deadline = context.transaction_info.time_range.end <= datum.voting_deadline_posix
+            let is_voting_active = datum.status == Voting
+            let self_output = expect_with_error(
+                transaction.find_own_output(tx),
+                "Proposal UTXO output not found"
+            )
+            let output_datum: ProposalDatum = expect_with_error(
+                self_output.datum,
+                "Output datum missing"
+            )
+            let vote_is_counted = if support {
+                output_datum.votes_for == datum.votes_for + capped_voting_power &&
+                output_datum.votes_against == datum.votes_against
+            } else {
+                output_datum.votes_against == datum.votes_against + capped_voting_power &&
+                output_datum.votes_for == datum.votes_for
+            }
+            let power_updated =
+                output_datum.total_voting_power == datum.total_voting_power + capped_voting_power
+            let tokens_updated =
+                output_datum.total_staked_tokens == datum.total_staked_tokens + staked_tokens
+            voter_is_authorized && meets_threshold && power_is_correct && within_deadline &&
+            is_voting_active && vote_is_counted && power_updated && tokens_updated
+        }
+
+        Veto -> {
+            let vetoer_is_authorized = signed_with_token(tx, datum.founder_policy_id, 1)
+            let within_veto_window = context.transaction_info.time_range.end <= datum.veto_deadline_posix
+            let self_output = expect_with_error(
+                transaction.find_own_output(tx),
+                "Proposal UTXO output not found"
+            )
+            let output_datum: ProposalDatum = expect_with_error(
+                self_output.datum,
+                "Output datum missing"
+            )
+            let status_is_vetoed = output_datum.status == Vetoed
+            vetoer_is_authorized && within_veto_window && status_is_vetoed
+        }
+
+        Resolve -> {
+            let past_enactment = context.transaction_info.time_range.start >
+                datum.voting_deadline_posix + datum.enactment_delay
+            let quorum_met = datum.total_voting_power >= datum.quorum
+            let expected_status = if quorum_met && datum.votes_for > datum.votes_against {
+                Passed
+            } else {
+                Failed
+            }
+            let self_output = expect_with_error(
+                transaction.find_own_output(tx),
+                "Proposal UTXO output not found"
+            )
+            let output_datum: ProposalDatum = expect_with_error(
+                self_output.datum,
+                "Output datum missing"
+            )
+            let status_is_resolved = output_datum.status == expected_status
+            past_enactment && status_is_resolved
+        }
+    }
+}

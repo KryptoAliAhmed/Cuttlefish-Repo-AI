@@ -1,0 +1,45 @@
+# terraform/main.tf
+
+resource "null_resource" "cuttlefish_ci_trigger" {
+  provisioner "local-exec" {
+    command = "echo CI/CD trigger for pipeline ${var.pipeline_name} with commit ${var.commit_hash}"
+  }
+}
+
+variable "pipeline_name" {}
+variable "commit_hash" {}
+
+output "ci_trigger_output" {
+  value = "Pipeline: ${var.pipeline_name}, Commit: ${var.commit_hash}"
+}
+
+---
+
+# .github/workflows/onchain-ci-trigger.yml
+
+name: OnChain CI/CD Trigger
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
+
+jobs:
+  listen_onchain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Listen for CI_CDTrigger events
+        uses: eth-brownie/brownie-action@v1
+        with:
+          script: |
+            from brownie import AdvancedBuilderAgent
+            contract = AdvancedBuilderAgent.at("${{ secrets.BUILDER_AGENT_ADDRESS }}")
+            events = contract.events.CI_CDTrigger.createFilter(fromBlock="latest").get_all_entries()
+            for e in events:
+                print(f"Triggering Terraform: {e['args']['pipeline']} {e['args']['commitHash']}")
+      - name: Run Terraform
+        run: |
+          terraform init
+          terraform apply -auto-approve -var="pipeline_name=${{ steps.listen_onchain.outputs.pipeline }}" -var="commit_hash=${{ steps.listen_onchain.outputs.commitHash }}"

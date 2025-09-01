@@ -1,0 +1,109 @@
+
+Directory: .
+--------------------------------------------------
+1. File: .env | Extension: .example
+2. File: advanced_builder_agent | Extension: .sol
+3. File: advanced_uniswap | Extension: .py
+4. File: Agent | Extension: .ts
+5. File: AgentCard | Extension: .ts
+6. File: Ai Shared Vision | Extension: .pdf
+7. File: AI_Manhattan_Cuttlefish_Slide | Extension: .pdf
+8. File: ansible_site | Extension: .yml
+9. File: App | Extension: .jsx
+10. File: App | Extension: .ts
+11. File: backend | Extension: .py
+12. File: basalt_supply_chain_deck | Extension: .jsx
+13. File: Builder Agent Architecture | Extension: .pdf
+14. File: BuilderAgent_Vault_Integration_Spec_Final | Extension: .pdf
+15. File: builder_agents_trading | Extension: .py
+16. File: builder_agent_stack | Extension: .py
+17. File: cicd | Extension: .tf
+18. File: climate_dao_simulator | Extension: .jsx
+19. File: coordination_client | Extension: .py
+20. File: Cuttlefish Ethical Manifesto | Extension: .pdf
+21. File: Cuttlefish Ethical Minerals White Paper (1) | Extension: .pdf
+22. File: CuttlefishLabs_InfraBatch_Merged_Final | Extension: .pdf
+23. File: CuttlefishLabs_Strategic_Update_June2025_FINAL | Extension: .pdf
+24. File: CuttlefishLabs_Ultimate_Master_June2025 | Extension: .pdf
+25. File: CuttlefishVault_BuilderAgent_PitchDeck_1Page | Extension: .pdf
+26. File: cuttlefish_backend_stack | Extension: .py
+27. File: Cuttlefish_Capabilities_Brief | Extension: .docx
+28. File: Cuttlefish_Consolidated_Portfolio | Extension: .pdf
+29. File: Cuttlefish_DoD_Executive_Summary | Extension: .docx
+30. File: Cuttlefish_Ethical_DAO_White_Paper_Final | Extension: .pdf
+31. File: cuttlefish_governor | Extension: .txt
+32. File: Cuttlefish_Labs_Master_Manifesto_Blueprint_July2025 | Extension: .pdf
+33. File: Cuttlefish_Labs_Strategic_Infrastructure_Pack | Extension: .pdf
+34. File: Cuttlefish_Master_Collection_Merged | Extension: .pdf
+35. File: Cuttlefish_Master_Collection_Updated_June2025 | Extension: .pdf
+36. File: Cuttlefish_Master_Combined_Final_June2025 | Extension: .pdf
+37. File: Cuttlefish_Memory_Doctrine_MCP_Integration | Extension: .pdf
+38. File: Cuttlefish_MVP_Kickoff_Brief | Extension: .docx
+39. File: Cuttlefish_OnePager_AI_Builder_DAO | Extension: .pdf
+40. File: Cuttlefish_OnePager_AI_Builder_DAO_Billion | Extension: .pdf
+41. File: Cuttlefish_Portfolio_Expansion_June2025 | Extension: .pdf
+42. File: Cuttlefish_Research_and_Code_Appendix | Extension: .pdf
+43. File: cuttlefish_ui_components | Extension: .jsx
+44. File: DAO | Extension: .ts
+45. File: dao_reit_dashboard_ui (1) | Extension: .jsx
+46. File: dao_reit_dashboard_ui (2) | Extension: .jsx
+47. File: dao_reit_dashboard_ui | Extension: .jsx
+48. File: David Hans Elze Navigator Core Memory (1) | Extension: .pdf
+49. File: David Hans Elze Navigator Core Memory | Extension: .pdf
+50. File: David Hans Elze Navigatot Core GPT memory | Extension: .pdf
+51. File: docker-compose | Extension: .yml
+52. File: Dockerfile | Extension: 
+53. File: dockerfile (1) | Extension: .txt
+54. File: dockerfile | Extension: .txt
+55. File: docker_compose | Extension: .yaml
+56. File: dream_panel (2) | Extension: .jsx
+57. File: dream_panel | Extension: .jsx
+58. File: earth_2_dao_reit (1) | Extension: .txt
+59. File: event_streamer_api | Extension: .py
+60. File: ExperimentForm | Extension: .ts
+61. File: filesname | Extension: .py
+62. File: file_inventory | Extension: .txt
+63. File: fly | Extension: .txt
+64. File: fusion_swarm_factory (1) | Extension: .txt
+65. File: fusion_swarm_factory | Extension: .txt
+66. File: gmail_download_attachments | Extension: .py
+67. File: grants-search-202507212036 | Extension: .csv
+68. File: Green Finance Brief | Extension: .pdf
+69. File: GreenIsland_UN_Ocean_DAO_Master | Extension: .pdf
+70. File: GreenIsland_UN_Ocean_DAO_Master_v2 | Extension: .pdf
+71. File: index | Extension: .html
+72. File: index | Extension: .ts
+73. File: LLM daydreaming | Extension: .pdf
+74. File: main | Extension: .py
+75. File: Master_Compiled_Document | Extension: .pdf
+76. File: multi_agent_factory | Extension: .sol
+77. File: multi_chain_agent | Extension: .py
+78. File: Namibia Trillion Plan (1) | Extension: .pdf
+79. File: Namibia Trillion Plan | Extension: .pdf
+80. File: namibia_land_tokenizer | Extension: .jsx
+81. File: offchain_ai | Extension: .py
+82. File: Orchestrator | Extension: .ts
+83. File: pdf_file_list | Extension: .txt
+84. File: Prometheus Labels | Extension: .docx
+85. File: ProposalForm | Extension: .ts
+86. File: rag_config | Extension: .yaml
+87. File: README | Extension: .md
+88. File: readme | Extension: .txt
+89. File: README_MASTER | Extension: .md
+90. File: README_V0_DEPLOY | Extension: .md
+91. File: requirements (1) | Extension: .txt
+92. File: requirements | Extension: .txt
+93. File: sample_document | Extension: .pdf
+94. File: SIDAN_Policy_Deck_Expanded | Extension: .pptx
+95. File: SIDAN_Policy_Deck_Presentation | Extension: .pptx
+96. File: start | Extension: .sh
+97. File: swarm_dashboard_dark | Extension: .jsx
+98. File: swarm_dashboard_liftkit | Extension: .jsx
+99. File: terraform_aws | Extension: .tf
+100. File: terraform_gcp | Extension: .tf
+101. File: test | Extension: .docx
+102. File: test2 | Extension: .docx
+103. File: test_chat | Extension: .py
+104. File: TrustGraph | Extension: .ts
+105. File: utils | Extension: .py
+106. File: utils | Extension: .ts

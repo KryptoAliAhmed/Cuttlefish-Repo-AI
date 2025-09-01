@@ -1,0 +1,85 @@
+// filename: contracts/FusionSwarmFactory.sol
+// Version: v2 (Conceptual)
+// Description: Smart contract factory for deploying and managing Cuttlefish Fusion Agents,
+//              with integrated MCP (Modular Contextual Primitives) hooks for time-awareness
+//              and functions for on-chain verifiable predictions and agent orchestration.
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// import "@uniswap/v4-core/contracts/interfaces/IUniswapV4Pool.sol";
+// import {PassageMCP} from "@passage/mcp/PassageMCP.sol";
+// import {IOracle} from "@chainlink/contracts/src/v0.8/interfaces/IOracle.sol";
+
+contract FusionSwarmFactory {
+    address public owner;
+    mapping(bytes32 => address) public deployedAgents;
+    mapping(address => bytes32) public agentPredictions;
+
+    event AgentDeployed(bytes32 indexed agentId, address indexed agentAddress, string role);
+    event AgentPredicted(address indexed agentAddress, string eventId, bytes32 predictionHash, uint256 confidence);
+    event AgentActionExecuted(address indexed agentAddress, string actionType, uint256 amount, address tokenAddress);
+
+    address public liquidityRouterAddress;
+    address public cuttlefishVaultAddress;
+
+    constructor(address _liquidityRouter, address _cuttlefishVault) {
+        owner = msg.sender;
+        liquidityRouterAddress = _liquidityRouter;
+        cuttlefishVaultAddress = _cuttlefishVault;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
+
+    function deployAgentWithMCP(bytes32 _agentId, string memory _role, bytes memory _mcpParams) public onlyOwner {
+        address newAgentAddress = address(uint160(uint256(keccak256(abi.encodePacked(_agentId, block.timestamp)))));
+        deployedAgents[_agentId] = newAgentAddress;
+        emit AgentDeployed(_agentId, newAgentAddress, _role);
+    }
+
+    function addLiquidity(
+        address _tokenA,
+        address _tokenB,
+        uint256 _amountA,
+        uint256 _amountB,
+        uint256 _minLiquidity
+    ) public {
+        emit AgentActionExecuted(msg.sender, "ADD_LIQUIDITY", _amountA, _tokenA);
+        emit AgentActionExecuted(msg.sender, "ADD_LIQUIDITY", _amountB, _tokenB);
+    }
+
+    function removeLiquidity(
+        address _tokenA,
+        address _tokenB,
+        uint256 _liquidityAmount
+    ) public {
+        emit AgentActionExecuted(msg.sender, "REMOVE_LIQUIDITY", _liquidityAmount, address(0));
+    }
+
+    function swapTokens(
+        address _tokenIn,
+        address _tokenOut,
+        uint256 _amountIn,
+        uint256 _minAmountOut
+    ) public {
+        emit AgentActionExecuted(msg.sender, "SWAP_TRADE", _amountIn, _tokenIn);
+    }
+
+    function submitFuturePrediction(
+        address _agentAddress,
+        bytes32 _eventId,
+        bytes32 _predictionHash,
+        uint256 _confidence
+    ) public {
+        agentPredictions[_agentAddress] = _predictionHash;
+        emit AgentPredicted(_agentAddress, "VERIFIABLE_EVENT", _predictionHash, _confidence);
+    }
+
+    // TODO: Add `verifyPrediction` function callable by a trusted oracle.
+    // TODO: Add `updateAgentYieldThreshold` (dynamic via MCP 'add_time').
+    // TODO: Add `capToolCalls` logic within agent contracts if agents are full smart contracts.
+}

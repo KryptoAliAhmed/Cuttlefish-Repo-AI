@@ -1,0 +1,112 @@
+// contracts/proposal_validator.aiken
+//
+// This Aiken smart contract defines a robust, multi-tiered governance system for a DAO.
+// It supports different roles (Founders, Voters, AI Agents) with distinct permissions,
+// creating a sophisticated and secure decision-making framework.
+//
+// Author: Cuttlefish Labs & AI Partners
+// Version: 1.2.0
+
+use aiken/list
+use aiken/transaction.{Input, Transaction, Output}
+use aiken/transaction/value.{AssetName, PolicyId, Value}
+
+// --- Data Structures ---
+
+type ProposalStatus {
+  Voting
+  Passed
+  Failed
+  Vetoed
+}
+
+type ProposalDatum {
+  id: Int,
+  proposer: PubKeyHash,
+  description: String,
+  voting_deadline: Int,
+  votes_for: Int,
+  votes_against: Int,
+  status: ProposalStatus,
+  quorum: Int,
+  enactment_delay: Int,
+  ai_analysis_url: String,
+  founder_policy_id: PolicyId,
+  normal_policy_id: PolicyId,
+  ai_owner_policy_id: PolicyId,
+}
+
+type ProposalAction {
+  Create,
+  Vote { support: Bool },
+  Veto,
+  Resolve,
+}
+
+// --- Helper Functions ---
+
+fn signed_with_token(tx: Transaction, policy_id: PolicyId) -> Bool {
+    let inputs = tx.inputs
+    list.any(inputs, fn(input: Input) -> Bool {
+        value.policy_quantity(input.output.value, policy_id) > 0
+    })
+}
+
+// --- Main Validator Logic ---
+
+validator(datum: ProposalDatum, redeemer: ProposalAction, context: ScriptContext) -> Bool {
+    let tx = context.transaction
+
+    when redeemer is {
+        Create -> {
+            let creator_is_authorized =
+                signed_with_token(tx, datum.normal_policy_id) ||
+                signed_with_token(tx, datum.ai_owner_policy_id)
+            let initial_state_is_correct =
+                datum.status == Voting &&
+                datum.votes_for == 0 &&
+                datum.votes_against == 0 &&
+                datum.quorum > 0
+            creator_is_authorized && initial_state_is_correct
+        }
+
+        Vote { support } -> {
+            let voter_is_authorized = signed_with_token(tx, datum.normal_policy_id)
+            let within_deadline = transaction.valid_to(tx, datum.voting_deadline)
+            let is_voting_active = datum.status == Voting
+            let self_output = expect_some(transaction.find_own_output(tx))
+            let output_datum: ProposalDatum = expect_some(self_output.datum)
+            let vote_is_counted = if support {
+                output_datum.votes_for == datum.votes_for + 1 &&
+                output_datum.votes_against == datum.votes_against
+            } else {
+                output_datum.votes_against == datum.votes_against + 1 &&
+                output_datum.votes_for == datum.votes_for
+            }
+            voter_is_authorized && within_deadline && is_voting_active && vote_is_counted
+        }
+
+        Veto -> {
+            let vetoer_is_authorized = signed_with_token(tx, datum.founder_policy_id)
+            let self_output = expect_some(transaction.find_own_output(tx))
+            let output_datum: ProposalDatum = expect_some(self_output.datum)
+            let status_is_vetoed = output_datum.status == Vetoed
+            vetoer_is_authorized && status_is_vetoed
+        }
+
+        Resolve -> {
+            let enactment_period_over =
+                transaction.valid_from(tx, datum.voting_deadline + datum.enactment_delay)
+            let quorum_is_met = datum.votes_for + datum.votes_against >= datum.quorum
+            let expected_status = if quorum_is_met && datum.votes_for > datum.votes_against {
+                Passed
+            } else {
+                Failed
+            }
+            let self_output = expect_some(transaction.find_own_output(tx))
+            let output_datum: ProposalDatum = expect_some(self_output.datum)
+            let status_is_resolved = output_datum.status == expected_status
+            enactment_period_over && status_is_resolved
+        }
+    }
+}

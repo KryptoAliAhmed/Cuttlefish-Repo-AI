@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
+
+interface IAgent {
+    function initialize(address admin, bytes calldata initData) external;
+    function getRole() external view returns (bytes32);
+}
+
+contract FusionSwarmFactory is AccessControl {
+    using Clones for address;
+
+    bytes32 public constant DEPLOYER_ROLE = keccak256("DEPLOYER_ROLE");
+
+    // MCP & Proxy Config
+    struct MCPConfig {
+        address mcpServer;
+        string[] tools;
+        uint256 toolLimit;
+    }
+
+    event AgentDeployed(address indexed agentAddress, bytes32 role, address implementation, MCPConfig mcpConfig);
+
+    mapping(bytes32 => address) public agentImplementations;
+    mapping(bytes32 => address[]) public deployedAgents;
+
+    constructor() {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DEPLOYER_ROLE, msg.sender);
+    }
+
+    function setAgentImplementation(bytes32 role, address implementation) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(implementation != address(0), "Invalid implementation");
+        agentImplementations[role] = implementation;
+    }
+
+    function deployWithMCP(
+        bytes32 role,
+        bytes calldata initParams,
+        MCPConfig calldata mcp
+    ) external onlyRole(DEPLOYER_ROLE) returns (address) {
+        address implementation = agentImplementations[role];
+        require(implementation != address(0), "Implementation not set");
+
+        address clone = implementation.clone();
+        deployedAgents[role].push(clone);
+
+        // Prepare MCP params into bytes for initialize()
+        bytes memory fullInit = abi.encode(initParams, mcp);
+
+        IAgent(clone).initialize(msg.sender, fullInit);
+
+        emit AgentDeployed(clone, role, implementation, mcp);
+        return clone;
+    }
+
+    function getAgentsByRole(bytes32 role) external view returns (address[] memory) {
+        return deployedAgents[role];
+    }
+}
+
+// --- Next: FusionPredictiveAgent.sol ---
+
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/AccessControl.sol";
+
+contract FusionPredictiveAgent is AccessControl {
+    bytes32 public constant ANALYST_ROLE = keccak256("ANALYST_ROLE");
+
+    address public mcpServer;
+    string[] public tools;
+    uint256 public toolLimit;
+    string public lastForecast;
+    uint256 public confidenceScore;
+
+    event ForecastIssued(string prediction, uint256 confidence);
+
+    constructor() {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+
+    function initialize(address admin, bytes calldata initData) external {
+        (bytes memory coreInit, FusionSwarmFactory.MCPConfig memory mcp) = abi.decode(initData, (bytes, FusionSwarmFactory.MCPConfig));
+
+        mcpServer = mcp.mcpServer;
+        tools = mcp.tools;
+        toolLimit = mcp.toolLimit;
+
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(ANALYST_ROLE, admin);
+    }
+
+    function forecastFuture(string calldata prompt, uint256 inputHash) external onlyRole(ANALYST_ROLE) returns (string memory, uint256) {
+        require(bytes(prompt).length < 280, "Prompt too long");
+        // Simulate prediction logic
+        lastForecast = string(abi.encodePacked("Predicted: ", prompt));
+        confidenceScore = uint256(keccak256(abi.encodePacked(block.timestamp, prompt, inputHash))) % 100;
+
+        emit ForecastIssued(lastForecast, confidenceScore);
+        return (lastForecast, confidenceScore);
+    }
+
+    function getRole() external pure returns (bytes32) {
+        return keccak256("predictive");
+    }
+}

@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/governance/Governor.sol";
+import "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
+import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
+import "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
+import "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
+import "@openzeppelin/contracts/governance/TimelockController.sol";
+
+// ERC-20 Token: CUTF
+contract CUTFToken is ERC20 {
+    constructor(address initialHolder) ERC20("Cuttlefish Utility Token", "CUTF") {
+        _mint(initialHolder, 100_000_000 * 10 ** decimals());
+    }
+}
+
+// ERC-721 NFT: Goose Pond Cabins
+contract GoosePondCabin is ERC721URIStorage {
+    uint256 public nextTokenId;
+    address public admin;
+
+    constructor() ERC721("Goose Pond Cabin", "GPC") {
+        admin = msg.sender;
+    }
+
+    function mint(address to, string memory uri) external {
+        require(msg.sender == admin, "only admin can mint");
+        uint256 tokenId = nextTokenId;
+        nextTokenId++;
+        _safeMint(to, tokenId);
+        _setTokenURI(tokenId, uri);
+    }
+}
+
+// Timelock Controller
+contract GoosePondTimelock is TimelockController {
+    constructor(
+        uint256 minDelay,
+        address[] memory proposers,
+        address[] memory executors
+    ) TimelockController(minDelay, proposers, executors) {}
+}
+
+// Governor Contract
+contract GoosePondGovernor is
+    Governor,
+    GovernorCountingSimple,
+    GovernorVotes,
+    GovernorVotesQuorumFraction,
+    GovernorTimelockControl
+{
+    constructor(IVotes _token, TimelockController _timelock)
+        Governor("Goose Pond DAO")
+        GovernorVotes(_token)
+        GovernorVotesQuorumFraction(4)
+        GovernorTimelockControl(_timelock)
+    {}
+
+    function votingDelay() public pure override returns (uint256) {
+        return 1; // 1 block
+    }
+
+    function votingPeriod() public pure override returns (uint256) {
+        return 17280; // approx 3 days on Arbitrum
+    }
+
+    function proposalThreshold() public pure override returns (uint256) {
+        return 1000 * 10 ** 18;
+    }
+
+    // The following functions are overrides required by Solidity.
+
+    function state(uint256 proposalId)
+        public
+        view
+        override(Governor, GovernorTimelockControl)
+        returns (ProposalState)
+    {
+        return super.state(proposalId);
+    }
+
+    function propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public override(Governor) returns (uint256) {
+        return super.propose(targets, values, calldatas, description);
+    }
+
+    function _execute(
+        uint256 proposalId,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) {
+        super._execute(proposalId, targets, values, calldatas, descriptionHash);
+    }
+
+    function _cancel(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) returns (uint256) {
+        return super._cancel(targets, values, calldatas, descriptionHash);
+    }
+
+    function _executor() internal view override(Governor, GovernorTimelockControl) returns (address) {
+        return super._executor();
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(Governor, GovernorTimelockControl)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+}

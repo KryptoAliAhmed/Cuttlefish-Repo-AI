@@ -1,0 +1,214 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+
+interface IDAO {
+    function submitProposal(bytes calldata data) external returns (uint256);
+}
+
+interface IReputation {
+    function getAgentScore(address agent) external view returns (uint256);
+}
+
+contract BuilderAgentWallet is Ownable, IERC721Receiver, IERC1155Receiver, ReentrancyGuard {
+    address public agentID;
+    mapping(address => uint256) public tokenHoldings;
+    mapping(address => bool) public approvedDAOContracts;
+    address public reputationContract;
+
+    event TokenDeposited(address indexed token, uint256 amount);
+    event TokenWithdrawn(address indexed token, uint256 amount);
+    event ProposalSubmitted(address indexed daoContract, uint256 proposalID);
+    event ExternalInvestment(address indexed token, uint256 amount, string targetProtocol, address targetContract);
+    event ProposalSimulation(address indexed dao, uint256 score, uint256 threshold, bool eligible, string message);
+    event StakingForecast(address indexed token, uint256 principal, uint256 annualRateBP, uint256 months, uint256 projectedReward);
+    event RewardMultiplied(uint256 baseReward, uint256 score, uint256 multiplier, uint256 finalReward);
+
+    struct SimulationResult {
+        bool eligible;
+        uint256 score;
+        string message;
+    }
+
+    struct StakingResult {
+        uint256 projectedReward;
+        string message;
+    }
+
+    modifier onlyAgent() {
+        require(msg.sender == agentID, "Not authorized AI agent");
+        _;
+    }
+
+    modifier reputationAbove(uint256 threshold) {
+        require(threshold <= 1000, "Threshold exceeds maximum reputation score");
+        require(getReputationScore() >= threshold, "Reputation too low");
+        _;
+    }
+
+    constructor(address _agentID) {
+        require(_agentID != address(0), "Invalid agent ID");
+        agentID = _agentID;
+        transferOwnership(msg.sender);
+    }
+
+    function depositToken(address token, uint256 amount) external nonReentrant {
+        require(token != address(0), "Invalid token address");
+        require(amount > 0, "Amount must be greater than zero");
+        require(IERC20(token).transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        tokenHoldings[token] += amount;
+        emit TokenDeposited(token, amount);
+    }
+
+    function depositNFT(address token, uint256 tokenId) external nonReentrant {
+        require(token != address(0), "Invalid token address");
+        IERC721(token).safeTransferFrom(msg.sender, address(this), tokenId);
+        emit TokenDeposited(token, tokenId);
+    }
+
+    function depositMultiToken(address token, uint256 id, uint256 amount) external nonReentrant {
+        require(token != address(0), "Invalid token address");
+        require(amount > 0, "Amount must be greater than zero");
+        IERC1155(token).safeTransferFrom(msg.sender, address(this), id, amount, "");
+        tokenHoldings[token] += amount;
+        emit TokenDeposited(token, amount);
+    }
+
+    function withdrawToken(address token, uint256 amount) external onlyOwner nonReentrant {
+        require(token != address(0), "Invalid token address");
+        require(amount > 0, "Amount must be greater than zero");
+        require(tokenHoldings[token] >= amount, "Insufficient balance");
+        tokenHoldings[token] -= amount;
+        require(IERC20(token).transfer(msg.sender, amount), "Withdrawal failed");
+        emit TokenWithdrawn(token, amount);
+    }
+
+    function withdrawNFT(address token, uint256 tokenId) external onlyOwner nonReentrant {
+        require(token != address(0), "Invalid token address");
+        IERC721(token).safeTransferFrom(address(this), msg.sender, tokenId);
+        emit TokenWithdrawn(token, tokenId);
+    }
+
+    function withdrawMultiToken(address token, uint256 id, uint256 amount) external onlyOwner nonReentrant {
+        require(token != address(0), "Invalid token address");
+        require(amount > 0, "Amount must be greater than zero");
+        require(tokenHoldings[token] >= amount, "Insufficient balance");
+        tokenHoldings[token] -= amount;
+        IERC1155(token).safeTransferFrom(address(this), msg.sender, id, amount, "");
+        emit TokenWithdrawn(token, amount);
+    }
+
+    function approveDAO(address dao) external onlyOwner {
+        require(dao != address(0), "Invalid DAO address");
+        approvedDAOContracts[dao] = true;
+    }
+
+    function submitProposal(address dao, bytes calldata data) external onlyAgent reputationAbove(600) nonReentrant returns (uint256) {
+        require(dao != address(0), "Invalid DAO address");
+        require(approvedDAOContracts[dao], "DAO not approved");
+        uint256 proposalId = IDAO(dao).submitProposal(data);
+        emit ProposalSubmitted(dao, proposalId);
+        return proposalId;
+    }
+
+    function setAgentID(address _newAgentID) external onlyOwner {
+        require(_newAgentID != address(0), "Invalid agent ID");
+        agentID = _newAgentID;
+    }
+
+    function setReputationContract(address _reputationContract) external onlyOwner {
+        require(_reputationContract != address(0), "Invalid reputation contract");
+        reputationContract = _reputationContract;
+    }
+
+    function getReputationScore() public view returns (uint256) {
+        if (reputationContract == address(0)) return 0;
+        try IReputation(reputationContract).getAgentScore(address(this)) returns (uint256 score) {
+            return score;
+        } catch {
+            return 0;
+        }
+    }
+
+    function simulateProposalImpact(address dao, uint256 scoreThreshold) external view returns (SimulationResult memory) {
+        require(dao != address(0), "Invalid DAO address");
+        require(scoreThreshold <= 1000, "Threshold exceeds maximum reputation score");
+        uint256 score = getReputationScore();
+        SimulationResult memory result;
+
+        if (!approvedDAOContracts[dao]) {
+            result = SimulationResult(false, score, "DAO not approved");
+        } else if (score < scoreThreshold) {
+            result = SimulationResult(false, score, "Agent reputation score too low");
+        } else {
+            result = SimulationResult(true, score, "Simulation passed: Agent eligible");
+        }
+
+        emit ProposalSimulation(dao, score, scoreThreshold, result.eligible, result.message);
+        return result;
+    }
+
+    function forecastStakingRewards(address token, uint256 annualRateBP, uint256 months) external view returns (StakingResult memory) {
+        require(token != address(0), "Invalid token address");
+        require(months > 0 && months <= 120, "Invalid duration: 1-120 months");
+        require(annualRateBP <= 10000, "Rate exceeds 100%");
+        uint256 principal = tokenHoldings[token];
+        require(principal > 0, "No token holdings");
+
+        uint256 projectedReward = Math.mulDiv(principal, annualRateBP * months, 12 * 10000);
+        emit StakingForecast(token, principal, annualRateBP, months, projectedReward);
+        return StakingResult(projectedReward, "Forecast complete");
+    }
+
+    function rewardMultiplier(uint256 baseReward) public view returns (uint256) {
+        require(baseReward > 0, "Base reward must be greater than zero");
+        uint256 score = getReputationScore();
+        uint256 multiplier;
+
+        if (score >= 900) {
+            multiplier = 150; // 1.5x
+        } else if (score >= 750) {
+            multiplier = 125; // 1.25x
+        } else if (score >= 600) {
+            multiplier = 110; // 1.1x
+        } else {
+            multiplier = 100; // 1.0x
+        }
+
+        uint256 finalReward = Math.mulDiv(baseReward, multiplier, 100);
+        emit RewardMultiplied(baseReward, score, multiplier, finalReward);
+        return finalReward;
+    }
+
+    function investInSustainableProtocol(address token, uint256 amount, string memory targetProtocol, address targetContract) external onlyAgent reputationAbove(700) nonReentrant {
+        require(token != address(0), "Invalid token address");
+        require(amount > 0, "Amount must be greater than zero");
+        require(tokenHoldings[token] >= amount, "Insufficient funds");
+        require(bytes(targetProtocol).length > 0 && bytes(targetProtocol).length <= 100, "Invalid protocol name");
+        require(targetContract != address(0), "Invalid target contract");
+
+        tokenHoldings[token] -= amount;
+        require(IERC20(token).transfer(targetContract, amount), "Transfer to protocol failed");
+        emit ExternalInvestment(token, amount, targetProtocol, targetContract);
+    }
+
+    function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure override returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata) external pure override returns (bytes4) {
+        return this.onERC1155BatchReceived.selector;
+    }
+}

@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+
+contract Earth2DAOREIT is ERC20, ERC20Burnable, AccessControl {
+    bytes32 public constant DAO_EXECUTOR_ROLE = keccak256("DAO_EXECUTOR_ROLE");
+    bytes32 public constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
+
+    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 10**18;
+    address public immutable goldenNFTContract;
+
+    struct UserStakedAssets {
+        uint256 totalMwCompute;
+        uint256 totalCarbonOffset;
+    }
+
+    mapping(address => UserStakedAssets) public userStakedAssets;
+    mapping(uint256 => address) public stakedNftOwners;
+
+    event NFTStaked(address indexed user, uint256 indexed nftId, uint256 mwComputeAdded, uint256 carbonOffsetAdded);
+    event NFTUnstaked(address indexed user, uint256 indexed nftId);
+    event ComputeMetricsUpdated(uint256 indexed nftId, uint256 newMwCompute, uint256 newCarbonOffset);
+    event E2RTokensDistributed(address indexed to, uint256 amount);
+
+    constructor(address _goldenNFTContract, address admin) ERC20("Earth2 Governance Token", "E2R") {
+        require(_goldenNFTContract != address(0), "NFT contract required");
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(DAO_EXECUTOR_ROLE, admin);
+        goldenNFTContract = _goldenNFTContract;
+        _mint(address(this), TOTAL_SUPPLY);
+    }
+
+    function stakeGoldenNFT(uint256 nftId, uint256 mwComputeValue, uint256 carbonOffsetValue) external {
+        IERC721 nft = IERC721(goldenNFTContract);
+        require(nft.ownerOf(nftId) == msg.sender, "Not NFT owner");
+
+        nft.transferFrom(msg.sender, address(this), nftId);
+
+        userStakedAssets[msg.sender].totalMwCompute += mwComputeValue;
+        userStakedAssets[msg.sender].totalCarbonOffset += carbonOffsetValue;
+        stakedNftOwners[nftId] = msg.sender;
+
+        emit NFTStaked(msg.sender, nftId, mwComputeValue, carbonOffsetValue);
+    }
+
+    function unstakeGoldenNFT(uint256 nftId, uint256 mwComputeValue, uint256 carbonOffsetValue) external {
+        require(stakedNftOwners[nftId] == msg.sender, "Not staker");
+
+        IERC721(goldenNFTContract).transferFrom(address(this), msg.sender, nftId);
+
+        userStakedAssets[msg.sender].totalMwCompute -= mwComputeValue;
+        userStakedAssets[msg.sender].totalCarbonOffset -= carbonOffsetValue;
+
+        delete stakedNftOwners[nftId];
+
+        emit NFTUnstaked(msg.sender, nftId);
+    }
+
+    function distributeE2RTokens(address to, uint256 amount) external onlyRole(DAO_EXECUTOR_ROLE) {
+        require(balanceOf(address(this)) >= amount, "Insufficient treasury balance");
+        _transfer(address(this), to, amount);
+        emit E2RTokensDistributed(to, amount);
+    }
+
+    function updateComputeMetrics(uint256 nftId, uint256 newMwCompute, uint256 newCarbonOffset) external onlyRole(ORACLE_ROLE) {
+        address owner = stakedNftOwners[nftId];
+        require(owner != address(0), "NFT not staked");
+
+        userStakedAssets[owner].totalMwCompute = newMwCompute;
+        userStakedAssets[owner].totalCarbonOffset = newCarbonOffset;
+
+        emit ComputeMetricsUpdated(nftId, newMwCompute, newCarbonOffset);
+    }
+
+    function getUserTotalStakedAssets(address user) external view returns (UserStakedAssets memory) {
+        return userStakedAssets[user];
+    }
+}

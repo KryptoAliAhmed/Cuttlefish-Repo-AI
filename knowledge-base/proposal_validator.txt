@@ -1,0 +1,56 @@
+// contracts/proposal_validator.aiken
+
+use aiken/list
+use aiken/transaction.{Input, Transaction}
+use aiken/transaction/value.{AssetName, PolicyId}
+
+// This defines the data structure for a proposal stored on-chain.
+type ProposalDatum {
+    id: Int,
+    proposer: PubKeyHash,
+    description: String,
+    voting_deadline: Int,
+    votes_for: Int,
+    votes_against: Int,
+    governance_policy_id: PolicyId,
+}
+
+// Defines the actions a voter can take.
+type VoteAction {
+    VoteFor
+    VoteAgainst
+}
+
+// Function to check if any of the transaction inputs contains the required governance NFT.
+fn has_governance_nft(tx: Transaction, policy_id: PolicyId) -> Bool {
+    list.any(tx.inputs, fn(input: Input) -> Bool {
+        value.policy_quantity(input.output.value, policy_id) > 0
+    })
+}
+
+// This is the main validator logic for the proposal contract.
+validator(datum: ProposalDatum, redeemer: VoteAction, context: ScriptContext) -> Bool {
+    let tx = context.transaction
+
+    // 1. Verify that the voter holds a Golden NFT
+    let voter_is_authorized = has_governance_nft(tx, datum.governance_policy_id)
+
+    // 2. Verify that the voting deadline has not passed
+    let within_deadline = transaction.valid_to(tx, datum.voting_deadline)
+
+    // 3. Find the proposal's output to get the updated vote counts
+    let output_datum: ProposalDatum =
+        expect_some(transaction.read_datum_at(tx, 0))
+
+    // 4. Verify that the vote count was correctly updated
+    let vote_is_counted_correctly = when redeemer is {
+        VoteFor ->
+            output_datum.votes_for == datum.votes_for + 1 &&
+            output_datum.votes_against == datum.votes_against
+        VoteAgainst ->
+            output_datum.votes_against == datum.votes_against + 1 &&
+            output_datum.votes_for == datum.votes_for
+    }
+
+    voter_is_authorized && within_deadline && vote_is_counted_correctly
+}

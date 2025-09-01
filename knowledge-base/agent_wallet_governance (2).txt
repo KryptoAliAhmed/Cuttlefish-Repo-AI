@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+
+contract BuilderAgentWallet is Ownable {
+    address public agentID;
+    mapping(address => uint256) public tokenHoldings;
+    mapping(address => bool) public approvedDAOContracts;
+    address public reputationContract;
+
+    event TokenDeposited(address indexed token, uint256 amount);
+    event TokenWithdrawn(address indexed token, uint256 amount);
+    event ProposalSubmitted(address indexed daoContract, uint256 proposalID);
+
+    modifier onlyAgent() {
+        require(msg.sender == agentID, "Not authorized AI agent");
+        _;
+    }
+
+    constructor(address _agentID) {
+        agentID = _agentID;
+        transferOwnership(tx.origin); // for initial human onboarding
+    }
+
+    function depositToken(address token, uint256 amount) external {
+        require(IERC20(token).transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        tokenHoldings[token] += amount;
+        emit TokenDeposited(token, amount);
+    }
+
+    function withdrawToken(address token, uint256 amount) external onlyOwner {
+        require(tokenHoldings[token] >= amount, "Insufficient balance");
+        tokenHoldings[token] -= amount;
+        require(IERC20(token).transfer(msg.sender, amount), "Withdrawal failed");
+        emit TokenWithdrawn(token, amount);
+    }
+
+    function approveDAO(address dao) external onlyOwner {
+        approvedDAOContracts[dao] = true;
+    }
+
+    function submitProposal(address dao, bytes calldata data) external onlyAgent {
+        require(approvedDAOContracts[dao], "DAO not approved");
+        (bool success, ) = dao.call(data);
+        require(success, "Proposal submission failed");
+        emit ProposalSubmitted(dao, uint256(uint160(address(this))));
+    }
+
+    function setReputationContract(address _reputationContract) external onlyOwner {
+        reputationContract = _reputationContract;
+    }
+
+    function getReputationScore() public view returns (uint256) {
+        if (reputationContract == address(0)) return 0;
+        (bool success, bytes memory result) = reputationContract.staticcall(abi.encodeWithSignature("getAgentScore(address)", address(this)));
+        if (!success) return 0;
+        return abi.decode(result, (uint256));
+    }
+
+    // SIMULATION FUNCTION: Estimate impact of a proposal based on score threshold
+    function simulateProposalImpact(address dao, uint256 scoreThreshold) external view returns (string memory) {
+        uint256 score = getReputationScore();
+        if (!approvedDAOContracts[dao]) {
+            return "DAO not approved";
+        }
+        if (score < scoreThreshold) {
+            return "Agent reputation score too low to submit proposal";
+        }
+        return "Simulation passed: Agent eligible for DAO proposal";
+    }
+
+    // SIMULATION FUNCTION: Forecast staking rewards based on balance and APY
+    function forecastStakingRewards(address token, uint256 annualRateBP, uint256 months) external view returns (uint256 projectedReward) {
+        uint256 principal = tokenHoldings[token];
+        require(principal > 0, "No token holdings");
+        // Simple interest formula: reward = P * r * t
+        projectedReward = (principal * annualRateBP * months) / (12 * 10000);
+        return projectedReward;
+    }
+}

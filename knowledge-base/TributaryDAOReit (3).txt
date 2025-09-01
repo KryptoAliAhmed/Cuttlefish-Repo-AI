@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./GoldenNFT.sol";
+import "./CarbonVault.sol";
+import "./E2RToken.sol";
+
+contract TributaryDAOReit is Ownable {
+    GoldenNFT public goldenNFT;
+    CarbonVault public carbonVault;
+    E2RToken public e2rToken;
+    mapping(uint256 => uint256) public nftVotingPower;
+    mapping(address => uint256) public votes;
+    mapping(uint256 => bool) public proposals;
+    mapping(uint256 => uint256) public votesUsedPerProposal;
+    uint256 public totalVotes;
+
+    event NFTMinted(uint256 tokenId, address owner, uint256 votingPower);
+    event ProposalCreated(uint256 proposalId);
+    event VoteCast(address voter, uint256 proposalId, uint256 votes);
+    event PayoutDistributed(address to, uint256 e2rAmount, uint256 carbonAmount);
+
+    constructor(address _nftAddress, address _vaultAddress, address _e2rAddress) Ownable(msg.sender) {
+        goldenNFT = GoldenNFT(_nftAddress);
+        carbonVault = CarbonVault(_vaultAddress);
+        e2rToken = E2RToken(_e2rAddress);
+    }
+
+    function mintGoldenNFT(address to, string memory uri, string memory tier) external onlyOwner {
+        uint256 tokenId = goldenNFT.mint(to, uri, tier);
+        uint256 votingPower = _calculateVotingPower(tier);
+        nftVotingPower[tokenId] = votingPower;
+        votes[to] += votingPower;
+        totalVotes += votingPower;
+        emit NFTMinted(tokenId, to, votingPower);
+    }
+
+    function _calculateVotingPower(string memory tier) internal pure returns (uint256) {
+        if (keccak256(abi.encodePacked(tier)) == keccak256(abi.encodePacked("Gold"))) return 150;
+        if (keccak256(abi.encodePacked(tier)) == keccak256(abi.encodePacked("Silver"))) return 100;
+        return 50;
+    }
+
+    function createProposal(uint256 proposalId) external onlyOwner {
+        proposals[proposalId] = false;
+        emit ProposalCreated(proposalId);
+    }
+
+    function castVote(uint256 proposalId, uint256 voteAmount) external {
+        require(proposals[proposalId] == false, "Proposal closed or invalid");
+        require(voteAmount <= votes[msg.sender], "Not enough voting power");
+        votes[msg.sender] -= voteAmount;
+        votesUsedPerProposal[proposalId] += voteAmount;
+        emit VoteCast(msg.sender, proposalId, voteAmount);
+    }
+
+    function finalizeProposal(uint256 proposalId) external onlyOwner {
+        require(proposals[proposalId] == false, "Already finalized");
+        if (votesUsedPerProposal[proposalId] > totalVotes / 2) {
+            proposals[proposalId] = true;
+            _distributePayout(proposalId);
+        } else {
+            proposals[proposalId] = false;
+        }
+    }
+
+    function _distributePayout(uint256 milestoneId) internal {
+        uint256 payoutAmount = e2rToken.balanceOf(address(this)) / 10;
+        uint256 carbonAmount = carbonVault.getCarbonTreasury()[1][0] / 20; // 5% of first token's balance
+        if (payoutAmount > 0 && carbonAmount > 0) {
+            e2rToken.triggerPayout(owner(), payoutAmount, milestoneId);
+            carbonVault.sellCredits(carbonVault.getCarbonTreasury()[0][0], carbonAmount, owner());
+            emit PayoutDistributed(owner(), payoutAmount, carbonAmount);
+        }
+    }
+
+    function stakeCarbonCredits(uint256 nftId, uint256 amount) external {
+        require(goldenNFT.ownerOf(nftId) == msg.sender, "Not NFT owner");
+        carbonVault.stakeCredits(nftId, amount);
+    }
+
+    function getCarbonTreasury() external view returns (address[] memory, uint256[] memory) {
+        return carbonVault.getCarbonTreasury();
+    }
+}

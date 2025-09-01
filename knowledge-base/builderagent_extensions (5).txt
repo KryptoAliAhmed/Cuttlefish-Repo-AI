@@ -1,0 +1,63 @@
+# Off-Chain AI Models Overview
+
+## 🔬 Predictive Oracle (Python / FastAPI)
+- ML model (ARIMA / XGBoost) forecasts ETH/USD price.
+- Exposes endpoint `/predict`:
+  ```json
+  {
+    "predicted_price": 2120,
+    "confidence": 93,
+    "anomaly": false
+  }
+  ```
+- Called by Chainlink Functions in Solidity `triggerTradeWithProof`.
+
+## 🧠 Generative Strategy Model (LLM)
+- Python Flask with OpenAI or local GPT-4o.
+- Exposes `/generate_strategy`:
+  ```json
+  {
+    "path": ["0xWETH", "0xUSDC"],
+    "amountOutMin": 1880
+  }
+  ```
+
+## 🌿 Sustainability Scorer
+- Calls ESG / carbon registries.
+- `/score` returns:
+  ```json
+  {
+    "score": 78,
+    "details": "Meets Earth2DAO threshold"
+  }
+  ```
+
+## 🧩 Dispute Resolver
+- Loads evidence blob.
+- `/resolve_dispute` returns:
+  ```json
+  {
+    "success": true,
+    "details": "Trade compensated by insurance vault."
+  }
+  ```
+
+## 🚀 Docker Compose
+```yaml
+version: '3.9'
+services:
+  predictive:
+    build: ./predictive_oracle
+    ports: ["8001:8000"]
+  generator:
+    build: ./generative_strategy
+    ports: ["8002:8000"]
+  sustainability:
+    build: ./sustainability_scorer
+    ports: ["8003:8000"]
+  resolver:
+    build: ./dispute_resolver
+    ports: ["8004:8000"]
+```
+
+Want detailed Python stubs for each endpoint?

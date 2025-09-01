@@ -1,0 +1,8 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Update packages
+      apt:
+        update_cache: yes
+# (rest of ansible_site.yml code omitted for brevity)

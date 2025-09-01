@@ -1,0 +1,64 @@
+{
+  "daoName": "Goose Pond DAO",
+  "network": "arbitrum",
+  "governor": {
+    "type": "OpenZeppelinGovernor",
+    "votingToken": "0xCUTF...", 
+    "quorumPercentage": 4,
+    "votingDelay": 1,
+    "votingPeriod": 17280, 
+    "proposalThreshold": 1000,
+    "timelockController": true
+  },
+  "tokens": [
+    {
+      "type": "ERC20",
+      "name": "Cuttlefish Utility Token",
+      "symbol": "CUTF",
+      "initialSupply": "100000000",
+      "decimals": 18,
+      "distribution": {
+        "0xDAOCreator1...": 30000000,
+        "0xPartnerWallet...": 20000000,
+        "0xBuilderVault...": 5000000
+      }
+    },
+    {
+      "type": "ERC721",
+      "name": "Goose Pond Cabin",
+      "symbol": "GPC",
+      "metadata": "on-chain",
+      "baseURI": "ipfs://goosepond-cabins/"
+    }
+  ],
+  "safe": {
+    "name": "Goose Pond Treasury Safe",
+    "chain": "arbitrum",
+    "owners": [
+      "0xDAOArchitect...",
+      "0xCuttlefishAdmin...",
+      "0xLocalPartner...",
+      "0xREITInvestor...",
+      "0xCommunityMember..."
+    ],
+    "threshold": 3
+  },
+  "snapshot": {
+    "space": "gooseponddao.eth",
+    "symbol": "CUTF",
+    "strategies": [
+      {
+        "name": "erc20-balance-of",
+        "params": {
+          "address": "0xCUTF...",
+          "symbol": "CUTF",
+          "decimals": 18
+        }
+      }
+    ],
+    "admins": [
+      "0xDAOArchitect...",
+      "0xCuttlefishAdmin..."
+    ]
+  }
+}

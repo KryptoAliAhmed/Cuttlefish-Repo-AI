@@ -1,0 +1,10 @@
+
+version: '3.8'
+services:
+  backend:
+    build: ./backend
+    volumes:
+      - ./outputs:/app/outputs
+      - ./chroma:/app/chroma
+    ports:
+      - "8000:8000"

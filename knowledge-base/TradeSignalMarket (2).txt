@@ -1,0 +1,99 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
+contract TradeSignalMarket is Ownable {
+    IERC20 public signalToken; // Token for staking (e.g., mWETH)
+    AggregatorV3Interface public priceFeed; // Chainlink price feed
+    uint256 public minStake; // Minimum stake for a signal
+    uint256 public signalWindow; // Time window for signal validity (e.g., 24 hours)
+    uint256 public rewardPool; // Accumulated rewards for predictors
+
+    struct Signal {
+        address predictor;
+        uint256 pricePrediction; // Predicted price (scaled by feed decimals)
+        uint256 stake; // Amount staked
+        uint256 timestamp; // Submission time
+        bool resolved; // Whether outcome is determined
+        bool correct; // Whether prediction was correct
+    }
+
+    Signal[] public signals;
+    mapping(address => uint256[]) public predictorSignals; // Tracks signals per user
+
+    event SignalSubmitted(uint256 indexed signalId, address predictor, uint256 pricePrediction, uint256 stake);
+    event SignalResolved(uint256 indexed signalId, bool correct, uint256 reward);
+    event RewardPoolUpdated(uint256 newAmount);
+
+    constructor(
+        address _signalToken,
+        address _priceFeed,
+        uint256 _minStake,
+        uint256 _signalWindow
+    ) Ownable(msg.sender) {
+        signalToken = IERC20(_signalToken);
+        priceFeed = AggregatorV3Interface(_priceFeed);
+        minStake = _minStake;
+        signalWindow = _signalWindow;
+    }
+
+    // Submit a price prediction with stake
+    function submitSignal(uint256 pricePrediction) external {
+        require(signalToken.transferFrom(msg.sender, address(this), minStake), "Stake transfer failed");
+        signals.push(Signal({
+            predictor: msg.sender,
+            pricePrediction: pricePrediction,
+            stake: minStake,
+            timestamp: block.timestamp,
+            resolved: false,
+            correct: false
+        }));
+        predictorSignals[msg.sender].push(signals.length - 1);
+        emit SignalSubmitted(signals.length - 1, msg.sender, pricePrediction, minStake);
+    }
+
+    // Resolve signals after window (called by owner or automation)
+    function resolveSignals() external onlyOwner {
+        (, int256 currentPrice, , uint256 updatedAt, ) = priceFeed.latestRoundData();
+        require(currentPrice > 0, "Invalid price data");
+        require(updatedAt > block.timestamp - 1 hours, "Price data stale");
+
+        for (uint256 i = 0; i < signals.length; i++) {
+            if (!signals[i].resolved && block.timestamp >= signals[i].timestamp + signalWindow) {
+                signals[i].resolved = true;
+                // Consider prediction correct if within 2% of actual price
+                uint256 absDiff = signals[i].pricePrediction > uint256(currentPrice)
+                    ? signals[i].pricePrediction - uint256(currentPrice)
+                    : uint256(currentPrice) - signals[i].pricePrediction;
+                signals[i].correct = absDiff <= (uint256(currentPrice) * 2) / 100;
+                if (signals[i].correct) {
+                    uint256 reward = (signals[i].stake * 150) / 100; // 50% bonus
+                    rewardPool -= reward;
+                    signalToken.transfer(signals[i].predictor, reward);
+                    emit SignalResolved(i, true, reward);
+                } else {
+                    emit SignalResolved(i, false, 0);
+                }
+            }
+        }
+    }
+
+    // Fund reward pool (e.g., from vault fees)
+    function fundRewardPool(uint256 amount) external onlyOwner {
+        require(signalToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        rewardPool += amount;
+        emit RewardPoolUpdated(rewardPool);
+    }
+
+    // Admin functions
+    function setMinStake(uint256 newMinStake) external onlyOwner {
+        minStake = newMinStake;
+    }
+
+    function setSignalWindow(uint256 newWindow) external onlyOwner {
+        signalWindow = newWindow;
+    }
+}

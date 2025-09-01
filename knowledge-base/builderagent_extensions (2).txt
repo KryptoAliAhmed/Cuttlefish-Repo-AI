@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract MultiAgentBuilderFactory is Ownable {
+    event SpecializedAgentDeployed(address indexed agent, bytes32 role);
+
+    mapping(bytes32 => address[]) public agentsByRole;
+
+    function deploySpecializedAgent(bytes32 role, address owner) external onlyOwner returns (address newAgent) {
+        bytes memory bytecode = abi.encodePacked(
+            type(SimpleAgent).creationCode,
+            abi.encode(owner, role)
+        );
+        bytes32 salt = keccak256(abi.encodePacked(role, block.timestamp, owner));
+        assembly {
+            newAgent := create2(0, add(bytecode, 32), mload(bytecode), salt)
+        }
+        require(newAgent != address(0), "Deployment failed");
+        agentsByRole[role].push(newAgent);
+        emit SpecializedAgentDeployed(newAgent, role);
+    }
+}
+
+contract SimpleAgent is Ownable {
+    bytes32 public agentRole;
+
+    constructor(address _owner, bytes32 _role) {
+        _transferOwnership(_owner);
+        agentRole = _role;
+    }
+}

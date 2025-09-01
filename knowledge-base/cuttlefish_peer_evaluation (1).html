@@ -1,0 +1,278 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuttlefish Labs Peer Evaluation</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #output { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+    button { margin: 5px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h1>Cuttlefish Labs Peer Evaluation Simulation</h1>
+  <p>Simulates AI agents experimenting with a floating solar project, evaluated by peers.</p>
+  <button onclick="runSimulation()">Run Simulation</button>
+  <button onclick="proposeNormUpdate()">Propose Norm Update</button>
+  <div id="output"></div>
+
+<script>
+// Utility: Generate a simple hash for ZKP simulation
+function simpleHash(data) {
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    hash = ((hash << 5) - hash + data.charCodeAt(i)) & 0xFFFFFFFF;
+  }
+  return hash;
+}
+
+// Agent Class: Represents an AI builder with ethical kernel
+class Agent {
+  constructor(id, financialGoal, ecologicalGoal, socialGoal) {
+    this.id = id;
+    this.reputation = 100; // Initial trust score (0-100)
+    this.metrics = { financial: financialGoal, ecological: ecologicalGoal, social: socialGoal };
+    this.experiments = [];
+    this.attestations = []; // On-chain-like records
+  }
+
+  // Propose an experiment (e.g., new solar panel material)
+  proposeExperiment(description, projectedMetrics) {
+    const experiment = {
+      id: this.experiments.length + 1,
+      description,
+      projectedMetrics,
+      actualMetrics: null,
+      verified: false,
+      riskBand: this.calculateRiskBand(projectedMetrics)
+    };
+    this.experiments.push(experiment);
+    this.log(`${this.id} proposed experiment: ${description}`);
+    return experiment;
+  }
+
+  // Calculate risk band (higher variance allowed with scrutiny)
+  calculateRiskBand(metrics) {
+    const variance = Math.abs(metrics.ecological - this.metrics.ecological);
+    return variance > 20 ? 'high' : 'normal'; // High risk if ecological metric deviates >20%
+  }
+
+  // Submit attestation (simulated on-chain record)
+  submitAttestation(experimentId, actualMetrics) {
+    const experiment = this.experiments.find(e => e.id === experimentId);
+    if (experiment) {
+      experiment.actualMetrics = actualMetrics;
+      const attestation = {
+        experimentId,
+        metrics: actualMetrics,
+        hash: simpleHash(JSON.stringify(actualMetrics)), // Simulated ZKP
+        timestamp: Date.now()
+      };
+      this.attestations.push(attestation);
+      this.log(`${this.id} submitted attestation for experiment ${experimentId}`);
+      return attestation;
+    }
+  }
+
+  // Log actions to UI
+  log(message) {
+    const output = document.getElementById('output');
+    output.innerHTML += `<p>${message}</p>`;
+  }
+}
+
+// Trust Graph: Manages peer evaluations and reputation
+class TrustGraph {
+  constructor(agents) {
+    this.agents = agents;
+    this.trustScores = new Map(); // Agent ID -> score
+    agents.forEach(agent => this.trustScores.set(agent.id, agent.reputation));
+  }
+
+  // Peer evaluation of an experiment
+  evaluateExperiment(agent, experiment, sensorData) {
+    const actual = experiment.actualMetrics;
+    const expected = agent.metrics;
+    let scoreAdjustment = 0;
+
+    // Check if metrics meet ethical thresholds
+    if (actual.ecological < expected.ecological * 0.8) {
+      scoreAdjustment -= 12; // Penalty for poor ecological outcome
+      agent.log(`${agent.id}'s experiment ${experiment.id} failed ecological metric (${actual.ecological} < ${expected.ecological * 0.8})`);
+    }
+    if (actual.social < expected.social * 0.9) {
+      scoreAdjustment -= 8; // Penalty for poor social outcome
+      agent.log(`${agent.id}'s experiment ${experiment.id} failed social metric (${actual.social} < ${expected.social * 0.9})`);
+    }
+    if (actual.financial >= expected.financial) {
+      scoreAdjustment += 5; // Reward for financial success
+    }
+
+    // Verify with sensor data (mocked)
+    const isValid = this.verifyZKP(experiment.attestations, sensorData);
+    if (!isValid) {
+      scoreAdjustment -= 10; // Penalty for unverified claims
+      agent.log(`${agent.id}'s experiment ${experiment.id} failed ZKP verification`);
+    }
+
+    // Apply consequence
+    this.updateTrustScore(agent.id, scoreAdjustment);
+    if (scoreAdjustment < 0 && experiment.riskBand === 'high') {
+      agent.log(`${agent.id} faces escrow lockup due to high-risk failure`);
+    }
+  }
+
+  // Simulated ZKP verification
+  verifyZKP(attestations, sensorData) {
+    const latest = attestations[attestations.length - 1];
+    return latest && simpleHash(JSON.stringify(sensorData)) === latest.hash;
+  }
+
+  // Update trust score with bounds
+  updateTrustScore(agentId, adjustment) {
+    let score = this.trustScores.get(agentId) + adjustment;
+    score = Math.max(0, Math.min(100, score)); // Bound between 0-100
+    this.trustScores.set(agentId, score);
+    document.getElementById('output').innerHTML += `<p>${agentId} trust score updated to ${score}</p>`;
+  }
+}
+
+// DAO: Manages norm updates
+class DAO {
+  constructor(agents, stakeholders) {
+    this.agents = agents;
+    this.stakeholders = stakeholders; // e.g., ['community', 'experts', 'funders']
+    this.proposals = [];
+  }
+
+  proposeNormUpdate(proposerId, newMetric, description) {
+    const proposal = {
+      id: this.proposals.length + 1,
+      proposerId,
+      newMetric,
+      description,
+      votes: { for: 0, against: 0 },
+      status: 'pending'
+    };
+    this.proposals.push(proposal);
+    document.getElementById('output').innerHTML += `<p>${proposerId} proposed norm update: ${description}</p>`;
+    return proposal;
+  }
+
+  voteOnProposal(proposalId, voterId, vote) {
+    const proposal = this.proposals.find(p => p.id === proposalId);
+    if (proposal) {
+      proposal.votes[vote ? 'for' : 'against'] += this.getVoterWeight(voterId);
+      document.getElementById('output').innerHTML += `<p>${voterId} voted ${vote ? 'for' : 'against'} proposal ${proposalId}</p>`;
+      this.resolveProposal(proposal);
+    }
+  }
+
+  getVoterWeight(voterId) {
+    // Simplified: Community gets higher weight
+    return this.stakeholders.includes(voterId) && voterId === 'community' ? 2 : 1;
+  }
+
+  resolveProposal(proposal) {
+    if (proposal.votes.for + proposal.votes.against >= this.stakeholders.length) {
+      proposal.status = proposal.votes.for > proposal.votes.against ? 'approved' : 'rejected';
+      document.getElementById('output').innerHTML += `<p>Proposal ${proposal.id} ${proposal.status}: ${proposal.description}</p>`;
+    }
+  }
+}
+
+// Simulation: Run a sample scenario
+function runSimulation() {
+  document.getElementById('output').innerHTML = ''; // Clear output
+  // Initialize agents (mock goals for floating solar project)
+  const agents = [
+    new Agent('Agent_X', { financial: 5, ecological: 100, social: 70 }),
+    new Agent('Agent_Y', { financial: 5, ecological: 100, social: 70 }),
+    new Agent('Agent_Z', { financial: 5, ecological: 100, social: 70 })
+  ];
+
+  // Initialize trust graph and DAO
+  const trustGraph = new TrustGraph(agents);
+  const dao = new DAO(agents, ['community', 'experts', 'funders']);
+
+  // Agent X proposes a new polymer experiment
+  const experiment = agents[0].proposeExperiment(
+    'New polymer for solar panels',
+    { financial: 6, ecological: 90, social: 75 } // Projected metrics
+  );
+
+  // Agent X submits attestation with actual outcomes
+  agents[0].submitAttestation(experiment.id, {
+    financial: 6,
+    ecological: 80, // Slightly below threshold (100 * 0.8 = 80)
+    social: 70
+  });
+
+  // Peers evaluate (mock sensor data)
+  const sensorData = { emissions: 80, jobs: 70 };
+  agents.slice(1).forEach(peer => {
+    trustGraph.evaluateExperiment(agents[0], experiment, sensorData);
+  });
+}
+
+// Propose a norm update
+function proposeNormUpdate() {
+  const agents = [
+    new Agent('Agent_X', { financial: 5, ecological: 100, social: 70 }),
+    new Agent('Agent_Y', { financial: 5, ecological: 100, social: 70 }),
+    new Agent('Agent_Z', { financial: 5, ecological: 100, social: 70 })
+  ];
+  const dao = new DAO(agents, ['community', 'experts', 'funders']);
+  const proposal = dao.proposeNormUpdate(
+    'Agent_X',
+    { ecological: 95 },
+    'Lower ecological threshold to 95 for more experimentation'
+  );
+  // Simulate votes
+  dao.voteOnProposal(proposal.id, 'community', true);
+  dao.voteOnProposal(proposal.id, 'experts', false);
+  dao.voteOnProposal(proposal.id, 'funders', true);
+}
+</script>
+</body>
+</html>

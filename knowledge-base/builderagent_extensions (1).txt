@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./CuttlefishVault.sol";
+import "@chainlink/contracts/src/v0.8/functions/v1/FunctionsClient.sol";
+
+interface IzkMLVerifier {
+    function verifyPrediction(bytes calldata proof, bytes32 inputHash, uint256 predictedValue) external view returns (bool);
+}
+
+interface ICoverVault {
+    function buyExecutionInsurance(bytes32 tradeId, uint256 amount) external;
+}
+
+interface IMultiAgentFactory {
+    function deploySpecializedAgent(bytes32 role, address owner) external returns (address);
+}
+
+contract AdvancedBuilderAgent is Ownable, FunctionsClient {
+    CuttlefishVault public vault;
+    IzkMLVerifier public zkMLVerifier;
+    ICoverVault public coverVault;
+    IMultiAgentFactory public agentFactory;
+
+    bytes32 public latestDueDiligenceHash;
+    uint256 public latestSustainabilityScore;
+
+    event TradeTriggeredWithProof(uint256 amountIn, uint256 amountOutMin, uint256 predictedValue, bytes32 proofHash);
+    event CI_CDTrigger(string pipeline, string commitHash);
+    event NewSpecializedAgentDeployed(address agent, bytes32 role);
+
+    constructor(
+        address _vault,
+        address _functionsRouter,
+        address _zkMLVerifier,
+        address _coverVault,
+        address _agentFactory
+    ) Ownable(msg.sender) FunctionsClient(_functionsRouter) {
+        vault = CuttlefishVault(_vault);
+        zkMLVerifier = IzkMLVerifier(_zkMLVerifier);
+        coverVault = ICoverVault(_coverVault);
+        agentFactory = IMultiAgentFactory(_agentFactory);
+    }
+
+    function triggerTradeWithProof(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        uint256 predictedValue,
+        bytes32 inputHash,
+        bytes calldata zkProof,
+        bytes32 tradeId
+    ) external onlyOwner {
+        require(zkMLVerifier.verifyPrediction(zkProof, inputHash, predictedValue), "Invalid ML proof");
+
+        coverVault.buyExecutionInsurance(tradeId, amountIn / 10);
+
+        address[] memory path = new address[](2);
+        path[0] = address(vault);
+        path[1] = address(coverVault);
+
+        vault.executeTradeOnUniswap(amountIn, amountOutMin, path, block.timestamp + 1200);
+
+        emit TradeTriggeredWithProof(amountIn, amountOutMin, predictedValue, keccak256(zkProof));
+        emit CI_CDTrigger("terraform_apply_digitaltwin", "commitXYZ");
+    }
+
+    function requestDueDiligenceValidation(string memory siteData) external onlyOwner returns (bytes32 requestId) {
+        bytes memory request = abi.encodePacked(
+            "function validateDueDiligence(siteData) { return keccak256(siteData); }"
+        );
+        requestId = sendRequest(request, 1, 300000, bytes32(0));
+        return requestId;
+    }
+
+    function fulfill(bytes32 requestId, bytes memory response, bytes memory err) internal override {
+        if (err.length == 0) {
+            latestDueDiligenceHash = abi.decode(response, (bytes32));
+            emit CI_CDTrigger("github_workflow_build_dashboard", "commitABC");
+        }
+    }
+
+    function setLatestSustainabilityScore(uint256 score) external onlyOwner {
+        latestSustainabilityScore = score;
+    }
+
+    function deploySpecializedAgent(bytes32 role) external onlyOwner returns (address) {
+        address newAgent = agentFactory.deploySpecializedAgent(role, msg.sender);
+        emit NewSpecializedAgentDeployed(newAgent, role);
+        return newAgent;
+    }
+}

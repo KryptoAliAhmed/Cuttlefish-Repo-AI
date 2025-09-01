@@ -1,0 +1,104 @@
+# 🧠 Cuttlefish Labs: BuilderAgent Swarm Factory
+
+## Overview
+The BuilderAgent Swarm Factory is a next-generation smart contract and AI infrastructure system developed by Cuttlefish Labs to power intelligent, ethical, and composable on-chain agents. It combines predictive AI, collaborative agent architecture, and DAO-driven incentives to coordinate trading, yield generation, and sustainable infrastructure development on Arbitrum and beyond.
+
+---
+
+## 🧱 Key Components
+
+### 1. `SwarmAgentFactory.sol`
+A modular factory smart contract that deploys specialized agents and manages their roles, access, and inter-agent coordination.
+
+#### Features:
+- Role-based instantiation: `deploySpecializedAgent(role, initParams)`
+- Agent registry with mapping of role → agent address
+- Swarm query interface: `queryAgent(role, inputData) → outputData`
+- On-chain event logging for agent decisions and forecasts
+
+---
+
+### 2. Specialized Agents
+Each agent is a minimal proxy (EIP-1167) or cloned instance with specific logic, able to coordinate via on-chain context or off-chain via ADK/Vibekit.
+
+#### a. `PredictiveAgent`
+- Forecasts market conditions using Chainlink Functions / zkML
+- Uses time series, sentiment, and oracle feeds to output next-move scores
+
+#### b. `RiskAgent`
+- Monitors exposure and volatility thresholds
+- Can approve or veto trades from PredictiveAgent based on risk parameters
+
+#### c. `ESGAgent`
+- Integrates sustainability scores (carbon impact, RWA emissions)
+- Applies ethical filters to trading behavior or staking decisions
+
+#### d. `SentimentAgent`
+- Gathers off-chain social data (Twitter, Lens, Farcaster)
+- Generates confidence scores on narratives (e.g., token momentum)
+
+#### e. `ResolutionAgent`
+- Handles disputes or failed trades using ORA-style verifiable AI
+- Outputs audit logs and can pause misbehaving agents
+
+---
+
+### 3. Strategy Generator (Off-Chain via Chainlink Functions)
+- Prompts LLM (OpenAI, Claude, Gemini) with: market data + intent
+- Generates swap routes, yield opportunities, or hedge scenarios
+- Returns JSON for on-chain simulation before execution
+
+---
+
+## 🧠 AI Integration Stack
+| Tool | Use Case |
+|------|----------|
+| Chainlink Functions | Forecast calls, LLM strategy prompts |
+| zkML or ORA | Verifiable predictions / model outputs |
+| Vibekit | MCP-compliant agent coordination |
+| ADK (Google) | Off-chain simulation and evaluation |
+| IPFS | Pinning audit trails and trade logic |
+
+---
+
+## 🏗️ Sprint: Developer Tasks (1 Week, 2 Devs @ 20 hrs Each)
+
+### Day 1–2
+- [ ] Scaffold `SwarmAgentFactory.sol` with role instantiation
+- [ ] Clone and adapt `PredictiveAgent.sol`
+- [ ] Setup Chainlink Functions stub (testnet)
+
+### Day 3–4
+- [ ] Build `queryAgent()` logic
+- [ ] Create `generateStrategy()` via external API call (mock)
+- [ ] Integrate Forecast validation in `triggerTrade()`
+
+### Day 5
+- [ ] Deploy to Arbitrum Goerli
+- [ ] Test agent handshakes and decision flows (Predictive → Risk → Vault)
+- [ ] Telegram webhook test with proposal claim
+
+### Deliverables:
+- Arbitrum testnet contracts verified on Arbiscan
+- GitHub repo push
+- Telegram + Vibekit test agents running
+- One end-to-end trade from signal → swarm → vote → execution
+
+---
+
+## 🔮 Future Extensions
+- ERC-1155 soulbound agent IDs
+- SwarmDAO governance on quest performance
+- AI alignment scoring (agent behavior audits)
+- Token-weighted upgrades and quest bounties
+
+---
+
+## Contact
+- David Elze @ Cuttlefish Labs  
+- GitHub: github.com/cuttlefishlabs  
+- Telegram bot: @CuttlefishDAO_Bot
+
+---
+
+This document will be shared with Grok, Gemini, and future devs to coordinate our first intelligent AI swarm deployment.

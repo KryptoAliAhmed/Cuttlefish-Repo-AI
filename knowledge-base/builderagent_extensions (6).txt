@@ -1,0 +1,43 @@
+# Python FastAPI Scaffolds for Off-Chain AI Services
+
+## 🔬 predictive_oracle/main.py
+```python
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/predict")
+def predict():
+    return {"predicted_price": 2120, "confidence": 93, "anomaly": False}
+```
+
+## 🧠 generative_strategy/main.py
+```python
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/generate_strategy")
+def generate():
+    return {"path": ["0xWETH", "0xUSDC"], "amountOutMin": 1880}
+```
+
+## 🌿 sustainability_scorer/main.py
+```python
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/score")
+def score():
+    return {"score": 78, "details": "Meets Earth2DAO threshold"}
+```
+
+## 🧩 dispute_resolver/main.py
+```python
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.post("/resolve_dispute")
+def resolve(evidence: dict):
+    return {"success": True, "details": "Trade compensated by insurance vault."}
+```
+
+✅ Simple, chainlink-call-ready JSON APIs. Want tests or Dockerfiles next?
