@@ -1532,21 +1532,22 @@ async def kernel_scores_post_api(request: KernelScoreRequest):
         social_data = request.metadata.get("social", {})
         
         # Convert to project data format for superior kernel engine
+        # Use actual values from frontend, no hardcoded fallbacks
         project_data = {
             "roi": financial_data.get("roi", 0) / 100,  # Convert percentage to decimal
             "apy_projection": financial_data.get("apy_projection", 0) / 100,
             "funding_source": financial_data.get("funding_source", "private"),
-            "cost": financial_data.get("cost", 500000),
-            "carbon_impact": ecological_data.get("carbon_impact", -100),
-            "renewable_percent": ecological_data.get("renewable_percent", 80),
-            "material_sourcing": ecological_data.get("material_sourcing", "sustainable"),
-            "water_efficiency": ecological_data.get("water_efficiency", "high"),
-            "waste_management": ecological_data.get("waste_management", "recycling"),
-            "job_creation": social_data.get("job_creation", 15),
-            "community_benefit": social_data.get("community_benefit", "high"),
-            "housing_equity": social_data.get("housing_equity", "mixed_income"),
-            "regional_impact": social_data.get("regional_impact", "significant"),
-            "regulatory_alignment": social_data.get("regulatory_alignment", "compliant")
+            "cost": financial_data.get("cost", 0),  # No hardcoded fallback
+            "carbon_impact": ecological_data.get("carbon_impact", 0),  # No hardcoded fallback
+            "renewable_percent": ecological_data.get("renewable_percent", 0),  # No hardcoded fallback
+            "material_sourcing": ecological_data.get("material_sourcing", "unknown"),
+            "water_efficiency": ecological_data.get("water_efficiency", "unknown"),
+            "waste_management": ecological_data.get("waste_management", "unknown"),
+            "job_creation": social_data.get("job_creation", 0),  # No hardcoded fallback
+            "community_benefit": social_data.get("community_benefit", "unknown"),
+            "housing_equity": social_data.get("housing_equity", "unknown"),
+            "regional_impact": social_data.get("regional_impact", "unknown"),
+            "regulatory_alignment": social_data.get("regulatory_alignment", "unknown")
         }
         
         # Create project metadata

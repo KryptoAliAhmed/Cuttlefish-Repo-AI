@@ -463,9 +463,9 @@ class AIEvaluationEngine:
             'public': 75,       # Moderate risk
             'debt': 70,         # Higher risk
             'equity': 65,       # Higher risk
-            'unknown': 50       # Unknown risk
+            'unknown': 0        # Unknown risk = zero score
         }
-        funding_score = funding_risk_scores.get(funding_source.lower(), 50)
+        funding_score = funding_risk_scores.get(funding_source.lower(), 0)
         
         # 4. Cost Efficiency Score (0-100): Economies of scale
         # Larger projects typically have better economies of scale
@@ -475,7 +475,7 @@ class AIEvaluationEngine:
             cost_log = np.log10(cost / 1000000)  # Convert to millions
             cost_score = min(100, max(0, 60 + (cost_log * 10)))  # Base 60 + log scaling
         else:
-            cost_score = 50
+            cost_score = 0  # Zero cost = zero score (no hardcoded fallback)
         
         # 5. Market Volatility Score (0-100): Based on project type
         volatility_scores = {
@@ -570,9 +570,9 @@ class AIEvaluationEngine:
             'certified': 80,          # Certified sustainable
             'conventional': 60,       # Standard materials
             'unsustainable': 30,      # Unsustainable sourcing
-            'unknown': 50             # Unknown sourcing
+            'unknown': 0              # Unknown sourcing = zero score
         }
-        material_score = material_sustainability_scores.get(material_sourcing.lower(), 50)
+        material_score = material_sustainability_scores.get(material_sourcing.lower(), 0)
         
         # 4. Water Efficiency Score (0-100): Water footprint analysis
         # Based on water efficiency standards
@@ -582,9 +582,9 @@ class AIEvaluationEngine:
             'moderate': 70,           # Moderate efficiency
             'standard': 60,           # Standard efficiency
             'low': 40,                # Low efficiency
-            'unknown': 50             # Unknown efficiency
+            'unknown': 0              # Unknown efficiency = zero score
         }
-        water_score = water_efficiency_scores.get(water_efficiency.lower(), 50)
+        water_score = water_efficiency_scores.get(water_efficiency.lower(), 0)
         
         # 5. Waste Management Score (0-100): Circular economy principles
         waste_management_scores = {
@@ -594,9 +594,9 @@ class AIEvaluationEngine:
             'composting': 80,         # Organic waste composting
             'landfill': 40,           # Landfill disposal
             'incineration': 30,       # Waste incineration
-            'unknown': 50             # Unknown management
+            'unknown': 0              # Unknown management = zero score
         }
-        waste_score = waste_management_scores.get(waste_management.lower(), 50)
+        waste_score = waste_management_scores.get(waste_management.lower(), 0)
         
         # Weighted average using dynamic weights
         weights = WeightConfiguration.get_ecological_weights(metadata.project_type)
@@ -671,9 +671,9 @@ class AIEvaluationEngine:
             'low': 50,            # Low community benefit
             'minimal': 30,        # Minimal community benefit
             'negative': 10,       # Negative community impact
-            'unknown': 50         # Unknown community impact
+            'unknown': 0          # Unknown community impact = zero score
         }
-        community_score = community_benefit_scores.get(community_benefit.lower(), 50)
+        community_score = community_benefit_scores.get(community_benefit.lower(), 0)
         
         # 3. Housing Equity Score (0-100): Affordable housing impact
         # Based on housing affordability indices
@@ -684,9 +684,9 @@ class AIEvaluationEngine:
             'standard': 60,        # Standard market housing
             'luxury': 40,          # Luxury housing only
             'gentrification': 20,  # Contributes to gentrification
-            'unknown': 50          # Unknown housing impact
+            'unknown': 0           # Unknown housing impact = zero score
         }
-        housing_score = housing_equity_scores.get(housing_equity.lower(), 50)
+        housing_score = housing_equity_scores.get(housing_equity.lower(), 0)
         
         # 4. Regional Impact Score (0-100): Economic development multiplier
         # Based on regional economic development studies
@@ -697,9 +697,9 @@ class AIEvaluationEngine:
             'local': 60,           # Local impact only
             'minimal': 40,         # Minimal regional impact
             'negative': 20,        # Negative regional impact
-            'unknown': 50          # Unknown regional impact
+            'unknown': 0           # Unknown regional impact = zero score
         }
-        regional_score = regional_impact_scores.get(regional_impact.lower(), 50)
+        regional_score = regional_impact_scores.get(regional_impact.lower(), 0)
         
         # 5. Regulatory Compliance Score (0-100): Governance and compliance
         # Based on regulatory compliance frameworks
@@ -709,9 +709,9 @@ class AIEvaluationEngine:
             'mostly_compliant': 75, # Mostly compliant
             'partially_compliant': 60, # Partially compliant
             'non_compliant': 30,   # Non-compliant
-            'unknown': 50          # Unknown compliance status
+            'unknown': 0           # Unknown compliance status = zero score
         }
-        compliance_score = compliance_scores.get(regulatory_alignment.lower(), 50)
+        compliance_score = compliance_scores.get(regulatory_alignment.lower(), 0)
         
         # Weighted average using dynamic weights
         weights = WeightConfiguration.get_social_weights(metadata.project_type)
