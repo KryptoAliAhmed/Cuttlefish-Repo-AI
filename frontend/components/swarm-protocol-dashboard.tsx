@@ -131,6 +131,11 @@ export function SwarmProtocolDashboard() {
   
   // Real-time updates
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   const [autoRefresh, setAutoRefresh] = useState(true)
 
   const availableAgents = [
@@ -394,7 +399,7 @@ export function SwarmProtocolDashboard() {
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Last Update</p>
                 <p className="text-sm font-medium">
-                  {lastUpdate.toLocaleTimeString()}
+                  {mounted ? lastUpdate.toLocaleTimeString() : 'Loading...'}
                 </p>
               </div>
               <Clock className="w-8 h-8 text-orange-500" />

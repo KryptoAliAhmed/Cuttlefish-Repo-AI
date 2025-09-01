@@ -57,7 +57,12 @@ interface TranscriptionSession {
 }
 
 export function EnhancedVoiceTranscription() {
+  const [mounted, setMounted] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   const [isProcessing, setIsProcessing] = useState(false)
   const [currentSession, setCurrentSession] = useState<TranscriptionSession | null>(null)
   const [sessions, setSessions] = useState<TranscriptionSession[]>([])
@@ -560,7 +565,7 @@ export function EnhancedVoiceTranscription() {
                       <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                         <span>{getSessionDuration(session)}</span>
                         <span>{session.finalText.length} chars</span>
-                        <span>{new Date(session.startTime).toLocaleTimeString()}</span>
+                        <span>{mounted ? new Date(session.startTime).toLocaleTimeString() : 'Loading...'}</span>
                       </div>
                     </div>
                   </div>

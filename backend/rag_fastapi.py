@@ -2,7 +2,8 @@ import os
 import time
 import numpy as np
 import faiss
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, Header
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, Header, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -49,6 +50,22 @@ logger = logging.getLogger(__name__)
 # Import new components
 from prediction_aggregator import prediction_aggregator, ModelType
 from cohere_reranker import cohere_reranker, RerankResult
+
+# === FastAPI App Initialization ===
+app = FastAPI(
+    title="Cuttlefish Labs RAG API",
+    description="Enhanced RAG system with Swarm Protocol, Prediction Aggregator, and Cohere Rerank",
+    version="2.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # === Swarm Protocol Integration ===
 from swarm_protocol import (
@@ -1716,6 +1733,15 @@ async def get_latest_kernel_scores() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error getting latest kernel scores: {e}")
         return []
+# === Evaluation Models ===
+class EvaluationMetrics(BaseModel):
+    """Metrics for evaluating RAG response quality"""
+    response_time: float
+    relevance_score: float
+    completeness_score: float
+    accuracy_score: float
+    user_satisfaction: Optional[float] = None
+
 # === Enhanced RAG Models ===
 class PredictionAggregationRequest(BaseModel):
     task: str
