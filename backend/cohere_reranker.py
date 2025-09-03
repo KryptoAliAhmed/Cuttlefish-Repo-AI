@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+     #!/usr/bin/env python3
 """
 Cohere Rerank Integration for Enhanced RAG
 Provides semantic re-ranking capabilities using Cohere's rerank API
@@ -33,7 +33,7 @@ class RerankRequest:
     top_n: int = 10
     model: str = "rerank-english-v2.0"
     return_metadata: bool = True
-    max_chunks_per_doc: int = 10
+    max_chunks_per_doc: int = 100
 
 class CohereReranker:
     """Cohere Rerank integration for semantic re-ranking"""

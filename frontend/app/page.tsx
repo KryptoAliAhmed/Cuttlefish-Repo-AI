@@ -9,6 +9,7 @@ import CuttlefishModel from "@/components/cuttlefish-widget/cuttlefish-model"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Sparkles, Zap, Brain, MessageSquare, BarChart3, Shield, Mic, ArrowDown, Mail, ExternalLink } from "lucide-react"
+import Link from "next/link"
 // Avoid SSR issues (localStorage) in RAGChat by client-only dynamic import
 const RAGChatClient = dynamic(() => import("@/components/rag-chat"), { ssr: false })
 import { RAGAgent } from "@/components/rag-agent"
@@ -77,14 +78,17 @@ export default function CuttlefishWidget() {
               <a href="#features" className="text-purple-300 hover:text-white transition-colors">Features</a>
               <a href="#about" className="text-purple-300 hover:text-white transition-colors">About</a>
               <a href="#contact" className="text-purple-300 hover:text-white transition-colors">Contact</a>
+              <Link href="/cuttlefish" className="text-purple-200 hover:text-white transition-colors">Cuttlefish Dashboard</Link>
             </nav>
 
             {/* Actions */}
             <div className="flex items-center gap-3">
-              <Button size="sm" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
-                <ExternalLink className="w-3 h-3 mr-1" />
-                Get Started
-              </Button>
+              <Link href="/cuttlefish" className="inline-flex">
+                <Button size="sm" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
+                  <ExternalLink className="w-3 h-3 mr-1" />
+                  Open Cuttlefish
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -116,14 +120,18 @@ export default function CuttlefishWidget() {
               Move your mouse to interact with the 3D model and explore our suite of intelligent applications.
             </p>
             <div className="flex items-center justify-center gap-4">
-              <Button size="lg" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
-                <Zap className="w-4 h-4 mr-2" />
-                Get Started
-              </Button>
-              <Button size="lg" variant="outline" className="border-purple-500/50 text-purple-300 hover:bg-purple-500/20">
-                <ArrowDown className="w-4 h-4 mr-2" />
-                Explore Features
-              </Button>
+              <Link href="/cuttlefish" className="inline-flex">
+                <Button size="lg" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
+                  <Zap className="w-4 h-4 mr-2" />
+                  Get Started
+                </Button>
+              </Link>
+              <a href="#features" className="inline-flex">
+                <Button size="lg" variant="outline" className="border-purple-500/50 text-purple-300 hover:bg-purple-500/20">
+                  <ArrowDown className="w-4 h-4 mr-2" />
+                  Explore Features
+                </Button>
+              </a>
             </div>
           </div>
         </div>
@@ -231,6 +239,13 @@ export default function CuttlefishWidget() {
             </div>
             <div className="rounded-2xl border border-purple-500/20 bg-black/40 backdrop-blur-sm p-6 shadow-2xl">
               <CuttlefishDashboard />
+              <div className="mt-4">
+                <Link href="/cuttlefish" className="inline-flex">
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
+                    Open Full Dashboard
+                  </Button>
+                </Link>
+              </div>
             </div>
           </section>
 

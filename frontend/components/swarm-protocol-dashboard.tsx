@@ -689,14 +689,14 @@ export function SwarmProtocolDashboard() {
                             <div className="flex items-center gap-2">
                               <Bot className="w-4 h-4" />
                               <span className="font-medium">
-                                {entry.agent_action.agent_type}
+                                {entry?.agent_action?.agent_type ?? 'Unknown'}
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell>{entry.agent_action.action}</TableCell>
-                          <TableCell>{entry.agent_action.tool}</TableCell>
+                          <TableCell>{entry?.agent_action?.action ?? '-'}</TableCell>
+                          <TableCell>{entry?.agent_action?.tool ?? '-'}</TableCell>
                           <TableCell>
-                            {entry.agent_action.score ? (
+                            {typeof entry?.agent_action?.score === 'number' ? (
                               <Badge variant="secondary">
                                 {entry.agent_action.score.toFixed(2)}
                               </Badge>
@@ -707,19 +707,20 @@ export function SwarmProtocolDashboard() {
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">
-                                {entry.current_hash.slice(0, 8)}...
+                                {entry?.current_hash ? `${entry.current_hash.slice(0, 8)}...` : '-'}
                               </code>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => copyToClipboard(entry.current_hash)}
+                                onClick={() => entry?.current_hash && copyToClipboard(entry.current_hash)}
+                                disabled={!entry?.current_hash}
                               >
                                 <Copy className="w-3 h-3" />
                               </Button>
                             </div>
                           </TableCell>
                           <TableCell>
-                            {new Date(entry.timestamp).toLocaleString()}
+                            {entry?.timestamp ? new Date(entry.timestamp).toLocaleString() : '-'}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">

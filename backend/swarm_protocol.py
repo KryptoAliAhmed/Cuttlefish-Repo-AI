@@ -8,6 +8,8 @@ import hashlib
 import json
 import time
 from datetime import datetime
+import os
+import json as _json
 from typing import Dict, List, Optional, Any, Union
 from enum import Enum
 from dataclasses import dataclass, asdict
@@ -17,6 +19,7 @@ from pathlib import Path
 import aiofiles
 from concurrent.futures import ThreadPoolExecutor
 import uuid
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +95,13 @@ class SwarmTask(BaseModel):
 class SwarmProtocol:
     """Core Swarm Protocol implementation"""
     
-    def __init__(self, trust_graph_path: str = "trustgraph.jsonl"):
+    def __init__(self, trust_graph_path: str | None = None):
+        # Default to shared json-logs/trustgraph/trustgraph.jsonl (same as rag_fastapi)
+        if trust_graph_path is None:
+            repo_root = Path(__file__).resolve().parents[1]
+            default_logs_dir = repo_root / 'json-logs'
+            default_trust_path = default_logs_dir / 'trustgraph' / 'trustgraph.jsonl'
+            trust_graph_path = os.getenv('TRUSTGRAPH_PATH', str(default_trust_path))
         self.trust_graph_path = Path(trust_graph_path)
         self.trust_graph_path.parent.mkdir(parents=True, exist_ok=True)
         self.agents: Dict[str, 'BaseAgent'] = {}
@@ -510,6 +519,9 @@ class BaseAgent:
         self.agent_type = agent_type
         self.context_shared = {}
         self.execution_history = []
+        self._redis = None
+        self._redis_key = os.getenv('REDIS_SHARED_KEY', 'swarm:shared')
+        self._init_redis()
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the agent's main logic"""
@@ -518,10 +530,40 @@ class BaseAgent:
     async def share_context(self, context: Dict[str, Any]):
         """Share context with other agents"""
         self.context_shared.update(context)
+        if self._redis:
+            try:
+                # store per-agent shared context
+                data = _json.dumps(self.context_shared)
+                self._redis.hset(self._redis_key, self.agent_id, data)
+            except Exception as e:
+                logger.warning(f"Redis share_context failed: {e}")
     
     async def get_shared_context(self) -> Dict[str, Any]:
         """Get shared context"""
-        return self.context_shared.copy()
+        merged = self.context_shared.copy()
+        if self._redis:
+            try:
+                raw = self._redis.hget(self._redis_key, self.agent_id)
+                if raw:
+                    from_json = _json.loads(raw)
+                    if isinstance(from_json, dict):
+                        merged.update(from_json)
+            except Exception as e:
+                logger.warning(f"Redis get_shared_context failed: {e}")
+        return merged
+
+    def _init_redis(self):
+        url = os.getenv('REDIS_URL')
+        if not url:
+            return
+        try:
+            import redis  # type: ignore
+            self._redis = redis.Redis.from_url(url, decode_responses=True)
+            # ping to validate
+            self._redis.ping()
+        except Exception as e:
+            logger.warning(f"Redis not available: {e}")
+            self._redis = None
 
 # === Concrete Agent Implementations ===
 
@@ -573,33 +615,29 @@ class PermitAgent(BaseAgent):
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         try:
+            from backend.providers.compliance_provider import get_compliance
             proposal = context.get('proposal', 'solar_farm_optimization')
-            
-            # Simulate compliance checks
-            compliance_result = {
+            comp = get_compliance(context)
+            score = float(comp.get('overall_compliance', 0.8))
+            approved = all([
+                comp.get('environmental_approved', True),
+                comp.get('zoning_approved', True),
+                comp.get('safety_approved', True),
+            ])
+            result = {
                 'compliance_id': f"PERMIT_{int(time.time())}",
                 'type': 'infrastructure_compliance',
                 'target': proposal,
-                'environmental_approved': True,
-                'zoning_approved': True,
-                'safety_approved': True,
-                'overall_compliance': 0.92,
-                'confidence': 0.88,
-                'summary': f'Compliance check passed for {proposal}',
+                **{k: v for k, v in comp.items() if k != 'error'},
+                'confidence': 0.85,
+                'summary': f"Compliance {'approved' if approved else 'rejected'} with score {score:.2f}",
                 'context_updates': {
-                    'compliance_status': 'approved',
-                    'compliance_score': 0.92
+                    'compliance_status': 'approved' if approved else 'rejected',
+                    'compliance_score': score
                 }
             }
-            
-            self.execution_history.append({
-                'timestamp': time.time(),
-                'action': 'compliance_check',
-                'result': compliance_result
-            })
-            
-            return compliance_result
-            
+            self.execution_history.append({'timestamp': time.time(), 'action': 'compliance_check', 'result': result})
+            return result
         except Exception as e:
             logger.error(f"PermitAgent execution failed: {e}")
             return {'error': str(e)}
@@ -612,32 +650,39 @@ class SignalAgent(BaseAgent):
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            # Simulate market analysis
-            market_data = context.get('market_data', {})
-            
-            signal_result = {
+            from backend.providers.market_provider import get_market_signal
+            symbol = context.get('symbol', 'BTC/USDT')
+            sig = get_market_signal({'symbol': symbol, **context})
+            signal = sig.get('signal', 'HOLD')
+            confidence = float(sig.get('confidence', 0.6))
+            result = {
                 'signal_id': f"SIGNAL_{int(time.time())}",
                 'type': 'market_signal',
-                'asset': 'E2R',
-                'signal': 'BUY',
-                'confidence': 0.78,
-                'price_target': 1.25,
-                'stop_loss': 0.95,
-                'summary': 'Positive signal for E2R token based on market analysis',
+                'asset': symbol,
+                'signal': signal,
+                'confidence': confidence,
+                'summary': f"Signal {signal} ({confidence:.2f}) via {sig.get('source','provider')}",
                 'context_updates': {
-                    'trading_signal': 'BUY',
-                    'signal_confidence': 0.78
+                    'trading_signal': signal,
+                    'signal_confidence': confidence
                 }
             }
-            
-            self.execution_history.append({
-                'timestamp': time.time(),
-                'action': 'market_analysis',
-                'result': signal_result
-            })
-            
-            return signal_result
-            
+            self.execution_history.append({'timestamp': time.time(), 'action': 'market_analysis', 'result': result})
+            # Optional autotrade
+            if os.getenv('TREASURY_AUTOTRADE', 'false').lower() == 'true':
+                try:
+                    from backend.treasury_sim import simulator
+                    agent_id = str(context.get('agent_id', 'auto-agent'))
+                    # naive action: if BUY, swap 1 unit from USDC to WETH in demo vault
+                    if signal == 'BUY':
+                        simulator.ensure_vault(agent_id)
+                        # attempt small seed if empty
+                        if simulator.get_vault(agent_id).balances.get('USDC', 0) < 1:
+                            simulator.seed_balance(agent_id, 'USDC', 10)
+                        simulator.swap(agent_id, 'USDC', 'WETH', 1.0, 0.0)
+                except Exception as e:
+                    logger.warning(f"Autotrade failed: {e}")
+            return result
         except Exception as e:
             logger.error(f"SignalAgent execution failed: {e}")
             return {'error': str(e)}
@@ -650,33 +695,38 @@ class PredictiveAgent(BaseAgent):
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            # Simulate predictive analytics
-            forecast_data = context.get('forecast_data', {})
-            
-            prediction_result = {
+            from backend.providers.market_provider import fetch_signal_from_ccxt
+            from backend.providers.predict_provider import get_prediction
+            symbol = context.get('symbol', 'BTC/USDT')
+            # If timeseries provider selected, supply OHLCV for forecast baseline
+            ohlcv = None
+            if os.getenv('PREDICT_PROVIDER', 'mock').lower() == 'timeseries':
+                try:
+                    import ccxt  # type: ignore
+                    ex = getattr(__import__('ccxt'), os.getenv('PREDICT_CCXT_EXCHANGE', 'binance'))({"enableRateLimit": True})
+                    ohlcv = ex.fetch_ohlcv(symbol, timeframe='1h', limit=200)
+                except Exception:
+                    ohlcv = None
+            pred = get_prediction({'symbol': symbol, **context}, ohlcv)
+            predicted_price = pred.get('predicted_price')
+            trend = pred.get('trend_direction', 'sideways')
+            confidence = float(pred.get('confidence', 0.6))
+            result = {
                 'prediction_id': f"PRED_{int(time.time())}",
                 'type': 'market_forecast',
-                'asset': 'E2R',
-                'timeframe': '30d',
-                'predicted_price': 1.35,
-                'confidence': 0.72,
-                'volatility_estimate': 0.15,
-                'trend_direction': 'bullish',
-                'summary': 'Bullish forecast for E2R token over 30-day period',
+                'asset': symbol,
+                'timeframe': context.get('horizon', '30d'),
+                'predicted_price': predicted_price,
+                'confidence': confidence,
+                'trend_direction': trend,
+                'summary': f"Forecast {trend} ({confidence:.2f})",
                 'context_updates': {
-                    'prediction_confidence': 0.72,
-                    'forecast_trend': 'bullish'
+                    'prediction_confidence': confidence,
+                    'forecast_trend': trend
                 }
             }
-            
-            self.execution_history.append({
-                'timestamp': time.time(),
-                'action': 'predictive_analysis',
-                'result': prediction_result
-            })
-            
-            return prediction_result
-            
+            self.execution_history.append({'timestamp': time.time(), 'action': 'predictive_analysis', 'result': result})
+            return result
         except Exception as e:
             logger.error(f"PredictiveAgent execution failed: {e}")
             return {'error': str(e)}
@@ -689,32 +739,25 @@ class ComplianceAgent(BaseAgent):
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            # Simulate regulatory compliance checks
-            compliance_data = context.get('compliance_data', {})
-            
-            compliance_result = {
+            from backend.providers.compliance_provider import get_compliance
+            comp = get_compliance(context)
+            score = float(comp.get('overall_compliance', comp.get('compliance_score', 0.8)))
+            risk = 'low' if score >= 0.8 else 'medium'
+            result = {
                 'compliance_id': f"COMP_{int(time.time())}",
                 'type': 'regulatory_compliance',
-                'target': 'trading_operations',
-                'regulatory_approved': True,
-                'risk_assessment': 'low',
-                'compliance_score': 0.89,
-                'confidence': 0.91,
-                'summary': 'Regulatory compliance check passed with low risk assessment',
+                'target': context.get('target', 'trading_operations'),
+                **{k: v for k, v in comp.items() if k != 'error'},
+                'risk_assessment': risk,
+                'confidence': 0.9,
+                'summary': f"Regulatory status score {score:.2f}",
                 'context_updates': {
-                    'regulatory_status': 'approved',
-                    'risk_level': 'low'
+                    'regulatory_status': 'approved' if score >= 0.7 else 'review',
+                    'risk_level': risk
                 }
             }
-            
-            self.execution_history.append({
-                'timestamp': time.time(),
-                'action': 'regulatory_compliance',
-                'result': compliance_result
-            })
-            
-            return compliance_result
-            
+            self.execution_history.append({'timestamp': time.time(), 'action': 'regulatory_compliance', 'result': result})
+            return result
         except Exception as e:
             logger.error(f"ComplianceAgent execution failed: {e}")
             return {'error': str(e)}
@@ -727,32 +770,27 @@ class RefactorAgent(BaseAgent):
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            # Simulate code refactoring and optimization
-            code_data = context.get('code_data', {})
-            
-            refactor_result = {
+            from backend.providers.refactor_provider import analyze_repository
+            analysis = analyze_repository()
+            # Crude metrics from outputs
+            eslint_issues = int(analysis.get('eslint_issues', 0))
+            gas_info = analysis.get('solc_output')
+            optimization_score = max(0.5, 1.0 - min(eslint_issues / 100.0, 0.5))
+            result = {
                 'refactor_id': f"REFACTOR_{int(time.time())}",
                 'type': 'code_optimization',
-                'target': 'smart_contracts',
-                'optimization_score': 0.87,
-                'gas_savings': 0.23,
-                'security_improvement': 0.15,
-                'confidence': 0.84,
-                'summary': 'Code refactoring completed with 23% gas savings and improved security',
+                'target': context.get('target', 'repository'),
+                'optimization_score': optimization_score,
+                'gas_savings_hint': gas_info[:200] if isinstance(gas_info, str) else None,
+                'confidence': 0.8,
+                'summary': f"Refactor analysis complete; eslint issues: {eslint_issues}",
                 'context_updates': {
-                    'optimization_status': 'completed',
-                    'gas_efficiency': 0.23
+                    'optimization_status': 'analyzed',
+                    'eslint_issues': eslint_issues
                 }
             }
-            
-            self.execution_history.append({
-                'timestamp': time.time(),
-                'action': 'code_refactoring',
-                'result': refactor_result
-            })
-            
-            return refactor_result
-            
+            self.execution_history.append({'timestamp': time.time(), 'action': 'code_refactoring', 'result': result})
+            return result
         except Exception as e:
             logger.error(f"RefactorAgent execution failed: {e}")
             return {'error': str(e)}

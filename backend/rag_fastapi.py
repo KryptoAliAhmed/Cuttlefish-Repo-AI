@@ -26,6 +26,7 @@ import hashlib
 import logging
 from pathlib import Path
 import json
+import re
 from functools import wraps
 import google.generativeai as genai
 import uvicorn
@@ -49,11 +50,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import new components
-from prediction_aggregator import prediction_aggregator, ModelType
-from cohere_reranker import cohere_reranker, RerankResult
+from backend.prediction_aggregator import prediction_aggregator, ModelType
+from backend.cohere_reranker import cohere_reranker, RerankResult
+from backend.routers_treasury import router as treasury_router
+from backend.routers_cognize import router as cognize_router
 
 # Import superior kernel scoring engine
-from kernel_scoring_engine import (
+from backend.kernel_scoring_engine import (
     KernelScoringEngine, 
     ProjectMetadata, 
     ProjectType, 
@@ -68,16 +71,52 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*")
+origins = [o.strip() for o in allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins if origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Include treasury simulation routes
+app.include_router(treasury_router)
+# Also mount under /api for compatibility with proxies
+app.include_router(treasury_router, prefix="/api")
+# Include cognize agent routes
+app.include_router(cognize_router)
+# Also mount under /api for compatibility with proxies
+app.include_router(cognize_router, prefix="/api")
+
+@app.get("/health")
+async def health():
+    """Service health check endpoint.
+
+    Returns a simple JSON payload indicating that the FastAPI backend is running.
+    This endpoint is intended for load balancers, uptime monitors, and the
+    frontend proxy to verify connectivity.
+
+    Returns:
+        dict: {"ok": True, "service": "cuttlefish-backend"}
+    """
+    return {"ok": True, "service": "cuttlefish-backend"}
+
+@app.get("/api/health")
+async def health_api():
+    """Service health check (namespaced under /api).
+
+    Same as `/health` but mounted under the `/api` prefix to align with
+    frontend proxy routing that forwards calls to `/api/backend/*`.
+
+    Returns:
+        dict: {"ok": True, "service": "cuttlefish-backend"}
+    """
+    return {"ok": True, "service": "cuttlefish-backend"}
+
 # === Swarm Protocol Integration ===
-from swarm_protocol import (
+from backend.swarm_protocol import (
     SwarmProtocolManager, 
     AgentType, 
     WorkflowType, 
@@ -131,7 +170,22 @@ class TrustGraphResponse(BaseModel):
 
 @app.post("/swarm/trace", response_model=SwarmTraceResponse)
 async def swarm_trace(request: SwarmTraceRequest):
-    """Log agent action to TrustGraph"""
+    """Append an agent action to the TrustGraph append-only ledger.
+
+    The payload is converted to a `AgentAction`, then persisted via the
+    `SwarmProtocol` which computes a SHA-256 hash chain across entries.
+
+    Args:
+        request: Pydantic model containing agent identity, action, tool, and
+            optional vault/proposal/score/comment fields.
+
+    Returns:
+        SwarmTraceResponse: Status and the entry as stored, including
+        `current_hash` and linkage to the previous hash.
+
+    Raises:
+        HTTPException: 500 if logging fails.
+    """
     try:
         # Convert string agent type to enum
         agent_type_map = {
@@ -183,7 +237,22 @@ async def swarm_trace(request: SwarmTraceRequest):
 
 @app.post("/swarm/workflow", response_model=SwarmWorkflowResponse)
 async def swarm_workflow(request: SwarmWorkflowRequest):
-    """Execute a Swarm Protocol workflow"""
+    """Execute a multi-agent workflow using the Swarm Protocol.
+
+    The workflow can be sequential, parallel, or hybrid. Agents are mapped
+    from string names to `AgentType` enums, executed, and their results merged
+    through shared context. Each agent’s action is logged to TrustGraph.
+
+    Args:
+        request: Title, description, workflow_type, ordered agent list, and
+            initial context for execution.
+
+    Returns:
+        SwarmWorkflowResponse: Task id, status, aggregated result, and audit log.
+
+    Raises:
+        HTTPException: 500 if workflow creation or execution fails.
+    """
     try:
         # Convert string workflow type to enum
         workflow_type_map = {
@@ -231,7 +300,18 @@ async def swarm_workflow(request: SwarmWorkflowRequest):
 
 @app.get("/swarm/trustgraph", response_model=TrustGraphResponse)
 async def get_trust_graph(agent_type: Optional[str] = None, limit: int = 100):
-    """Get TrustGraph entries"""
+    """Retrieve recent TrustGraph entries, optionally filtered by agent type.
+
+    Args:
+        agent_type: Optional agent type string to filter entries.
+        limit: Maximum number of entries to return (default 100).
+
+    Returns:
+        TrustGraphResponse: Entries, total_count, and latest hash value.
+
+    Raises:
+        HTTPException: 500 if retrieval fails.
+    """
     try:
         # Convert string agent type to enum if provided
         agent_type_enum = None
@@ -266,7 +346,17 @@ async def get_trust_graph(agent_type: Optional[str] = None, limit: int = 100):
 
 @app.get("/swarm/workflow/{task_id}")
 async def get_workflow_status(task_id: str):
-    """Get status of a specific workflow"""
+    """Get the current status and result of a previously created workflow.
+
+    Args:
+        task_id: The unique identifier returned when the workflow was created.
+
+    Returns:
+        dict: Status payload with task metadata, current state, and result.
+
+    Raises:
+        HTTPException: 404 if the task is not found; 500 for unexpected errors.
+    """
     try:
         status = await swarm_manager.get_workflow_status(task_id)
         if not status:
@@ -281,7 +371,14 @@ async def get_workflow_status(task_id: str):
 
 @app.get("/swarm/agents")
 async def get_swarm_agents():
-    """Get list of available agents"""
+    """List all currently registered Swarm agents.
+
+    Returns:
+        dict: An `agents` list with `agent_id`, `agent_type`, and status flags.
+
+    Raises:
+        HTTPException: 500 if agent enumeration fails.
+    """
     try:
         agents = []
         for agent_id, agent in swarm_manager.protocol.agents.items():
@@ -659,258 +756,7 @@ async def compute_esg_scores_superior(metrics: Dict[str, Any], project_name: str
             "recommendations": ["Check project data"],
             "confidence": 0.5
         }
-    # Fill defaults for stability (use research-based neutral/benchmark values)
-    DEFAULTS = {
-        'financial': {
-            'direct_economic_value': 200000,  # More appropriate for small-scale projects
-            'economic_value_distributed': 150000,
-            'economic_value_retained': 50000,
-            'market_presence_score': 60,  # Higher for renewable energy sector
-            'operational_risk': 2,
-            'regulatory_risk': 2,
-            'market_risk': 2,
-            'reputational_risk': 2,
-            'systemic_risk': 2,
-            'capital_efficiency': 60,  # Higher for renewable energy
-            'operational_efficiency': 60,
-            'innovation_investment': 8,  # Higher for renewable energy
-            'digital_transformation': 60,
-        },
-        'ecological': {
-            'ghg_intensity': 0.5,  # Lower for renewable energy
-            'water_intensity': 5,   # Lower for solar
-            'waste_intensity': 30,  # Lower for renewable energy
-            'land_use_impact': 1,   # Lower for small-scale
-            'pollution_index': 1,   # Lower for renewable energy
-            'renewable_energy_pct': 80,  # Much higher for renewable energy projects
-            'material_circularity': 0.6,  # Higher for renewable energy
-            'water_recycling_pct': 20,
-            'waste_diversion_pct': 50,  # Higher for renewable energy
-            'sustainable_sourcing_pct': 70,  # Higher for renewable energy
-            'emission_reduction_target_pct': 30,  # Higher for renewable energy
-            'climate_risk_assessment': 70,  # Higher for renewable energy
-            'adaptation_measures': 50,  # Higher for renewable energy
-            'carbon_offset_quality': 70,  # Higher for renewable energy
-        },
-        'social': {
-            'employment_quality': 70,  # Higher for renewable energy jobs
-            'diversity_inclusion': 60,  # Higher for renewable energy sector
-            'training_development': 60,  # Higher for renewable energy
-            'health_safety': 80,  # Higher for renewable energy
-            'worker_satisfaction': 70,  # Higher for renewable energy
-            'local_economic_impact': 70,  # Higher for community projects
-            'community_investment': 50,  # Higher for community projects
-            'stakeholder_engagement': 70,  # Higher for community projects
-            'cultural_heritage': 70,
-            'access_equity': 60,  # Higher for community projects
-            'leadership_accountability': 70,  # Higher for DOE projects
-            'ethics_compliance': 80,  # Higher for government projects
-            'transparency_reporting': 70,  # Higher for government projects
-            'regulatory_compliance': 85,  # Higher for DOE projects
-            'innovation_governance': 60,  # Higher for renewable energy
-        }
-    }
-
-    def with_defaults(section: str) -> Dict[str, Any]:
-        merged = dict(DEFAULTS[section])
-        for k, v in (metrics.get(section, {}) or {}).items():
-            merged[k] = v
-        return merged
-
-    fin_metrics = with_defaults('financial')
-    eco_metrics = with_defaults('ecological')
-    soc_metrics = with_defaults('social')
-
-    # Financial components
-    econ_perf = economic_performance_score({
-        'direct_economic_value': fin_metrics.get('direct_economic_value', 0),
-        'economic_value_distributed': fin_metrics.get('economic_value_distributed', 0),
-        'economic_value_retained': fin_metrics.get('economic_value_retained', 0),
-        'market_presence_score': fin_metrics.get('market_presence_score', 0),
-    })
-    risk_mgmt = risk_management_score({
-        'operational_risk': fin_metrics.get('operational_risk', 2),
-        'regulatory_risk': fin_metrics.get('regulatory_risk', 2),
-        'market_risk': fin_metrics.get('market_risk', 2),
-        'reputational_risk': fin_metrics.get('reputational_risk', 2),
-        'systemic_risk': fin_metrics.get('systemic_risk', 2),
-    })
-    resource_eff = resource_efficiency_score({
-        'capital_efficiency': fin_metrics.get('capital_efficiency', 50),
-        'operational_efficiency': fin_metrics.get('operational_efficiency', 50),
-        'innovation_investment': fin_metrics.get('innovation_investment', 5),
-        'digital_transformation': fin_metrics.get('digital_transformation', 50),
-    })
-    financial_kernel = econ_perf * 0.4 + risk_mgmt * 0.3 + resource_eff * 0.3
-
-    # Ecological components
-    env_impact = environmental_impact_score({
-        'ghg_intensity': eco_metrics.get('ghg_intensity', 1.0),
-        'water_intensity': eco_metrics.get('water_intensity', 10),
-        'waste_intensity': eco_metrics.get('waste_intensity', 50),
-        'land_use_impact': eco_metrics.get('land_use_impact', 2),
-        'pollution_index': eco_metrics.get('pollution_index', 2),
-    })
-    stewardship = resource_stewardship_score({
-        'renewable_energy_pct': eco_metrics.get('renewable_energy_pct', 0),
-        'material_circularity': eco_metrics.get('material_circularity', 0.0),
-        'water_recycling_pct': eco_metrics.get('water_recycling_pct', 0),
-        'waste_diversion_pct': eco_metrics.get('waste_diversion_pct', 0),
-        'sustainable_sourcing_pct': eco_metrics.get('sustainable_sourcing_pct', 0),
-    })
-    climate_action = climate_action_score({
-        'emission_reduction_target_pct': eco_metrics.get('emission_reduction_target_pct', 0),
-        'climate_risk_assessment': eco_metrics.get('climate_risk_assessment', 0),
-        'adaptation_measures': eco_metrics.get('adaptation_measures', 0),
-        'carbon_offset_quality': eco_metrics.get('carbon_offset_quality', 0),
-    })
-    ecological_kernel = env_impact * 0.4 + stewardship * 0.35 + climate_action * 0.25
-
-    # Social components
-    human_cap = human_capital_score({
-        'employment_quality': soc_metrics.get('employment_quality', 0),
-        'diversity_inclusion': soc_metrics.get('diversity_inclusion', 0),
-        'training_development': soc_metrics.get('training_development', 0),
-        'health_safety': soc_metrics.get('health_safety', 0),
-        'worker_satisfaction': soc_metrics.get('worker_satisfaction', 0),
-    })
-    community = community_impact_score({
-        'local_economic_impact': soc_metrics.get('local_economic_impact', 0),
-        'community_investment': soc_metrics.get('community_investment', 0),
-        'stakeholder_engagement': soc_metrics.get('stakeholder_engagement', 0),
-        'cultural_heritage': soc_metrics.get('cultural_heritage', 0),
-        'access_equity': soc_metrics.get('access_equity', 0),
-    })
-    governance = governance_score({
-        'leadership_accountability': soc_metrics.get('leadership_accountability', 0),
-        'ethics_compliance': soc_metrics.get('ethics_compliance', 0),
-        'transparency_reporting': soc_metrics.get('transparency_reporting', 0),
-        'regulatory_compliance': soc_metrics.get('regulatory_compliance', 0),
-        'innovation_governance': soc_metrics.get('innovation_governance', 0),
-    })
-    # DEPRECATED: This hardcoded calculation is no longer used
-    # The superior kernel engine handles all calculations with dynamic weights
-    # social_kernel = human_cap * 0.35 + community * 0.35 + governance * 0.30
-
-    # Apply feasibility-aware penalties based on scope realism
-    diagnostics: List[str] = []
-    feas = metrics.get('feasibility') or {}
-    try:
-        budget = float(feas.get('budget_total_usd') or 0)
-        jobs = float(feas.get('jobs_promised') or 0)
-        hubs = float(feas.get('hubs') or 1)  # Default to 1 hub if not specified
-        timeline_years = float(feas.get('timeline_year') or 0)
-        
-        # SMART FEASIBILITY CHECK: Different logic for different project scales
-        if budget > 0 and jobs > 0:
-            # Small-scale renewable energy projects (like your DOE proposal)
-            if budget <= 500000 and jobs <= 500 and hubs <= 3:
-                # Reasonable small-scale project; apply micro-penalties only for ultra-low budgets
-                budget_per_job = budget / max(jobs, 1)
-                if budget < 2000:
-                    before_fin = financial_kernel
-                    financial_kernel = min(financial_kernel, 25.0)
-                    diagnostics.append(f"Small-scale: ultra-low absolute budget ${budget:,.0f}; financial capped {before_fin:.1f}→{financial_kernel:.1f}")
-                elif budget_per_job < 200:
-                    before_fin = financial_kernel
-                    financial_kernel = min(financial_kernel, 30.0)
-                    diagnostics.append(f"Small-scale: very low budget-per-job ${budget_per_job:,.0f}/job; financial capped {before_fin:.1f}→{financial_kernel:.1f}")
-                elif budget_per_job < 500:
-                    before_fin = financial_kernel
-                    financial_kernel = min(financial_kernel, 40.0)
-                    diagnostics.append(f"Small-scale: low budget-per-job ${budget_per_job:,.0f}/job; financial capped {before_fin:.1f}→{financial_kernel:.1f}")
-                else:
-                    diagnostics.append(f"Small-scale project detected: ${budget:,.0f}, {jobs} jobs, {hubs} hubs - no penalties applied")
-            # Medium-scale projects
-            elif budget <= 5000000 and jobs <= 2000 and hubs <= 10:
-                # Check for reasonable budget-to-jobs ratio
-                budget_per_job = budget / jobs
-                if budget_per_job < 500:  # Less than $500 per job is suspicious (reduced from $1k)
-                    before_fin = financial_kernel
-                    financial_kernel = min(financial_kernel, 45.0)  # Increased from 35.0
-                    diagnostics.append(f"Medium-scale budget-jobs mismatch: ${budget_per_job:,.0f}/job; financial capped {before_fin:.1f}→{financial_kernel:.1f}")
-                else:
-                    diagnostics.append(f"Medium-scale project: ${budget:,.0f}, {jobs} jobs - reasonable ratios")
-            # Large-scale infrastructure projects
-            else:
-                # Reduced penalties for large projects
-                expected_budget = 1e9 * max(1.0, hubs)  # ~$1B per hub baseline
-                if jobs > 10000:
-                    expected_budget = max(expected_budget, jobs * 50000)  # $50k/job minimum proxy
-                if expected_budget > 0:
-                    ratio = budget / expected_budget
-                    if ratio < 0.01:  # Reduced threshold from 0.05
-                        before_fin = financial_kernel
-                        before_soc = social_kernel
-                        if ratio < 0.0001:  # Reduced from 0.001
-                            financial_kernel = min(financial_kernel, 25.0)  # Increased from 15.0
-                        elif ratio < 0.001:  # Reduced from 0.01
-                            financial_kernel = min(financial_kernel, 30.0)  # Increased from 20.0
-                        else:
-                            financial_kernel = min(financial_kernel, 35.0)  # Increased from 25.0
-                        if ratio < 0.0001:  # Reduced from 0.001
-                            social_kernel = min(social_kernel, 35.0)  # Increased from 25.0
-                        elif ratio < 0.001:  # Reduced from 0.01
-                            social_kernel = min(social_kernel, 40.0)  # Increased from 30.0
-                        else:
-                            social_kernel = min(social_kernel, 45.0)  # Increased from 35.0
-                        diagnostics.append(f"Large-scale budget-scope mismatch: ratio={ratio:.6f}; financial {before_fin:.1f}→{financial_kernel:.1f}, social {before_soc:.1f}→{social_kernel:.1f}")
-        else:
-            diagnostics.append("Missing budget or jobs for feasibility check; defaults applied")
-    except Exception:
-        diagnostics.append("Feasibility evaluation error; skipped penalties")
-
-    # Missing-data caps to avoid inflated scores when key details are absent
-    try:
-        # Consider values equal to DEFAULTS as missing (neutral)
-        def_ratio_fin = sum(1 for k,v in DEFAULTS['financial'].items() if fin_metrics.get(k, DEFAULTS['financial'][k]) == DEFAULTS['financial'][k]) / max(1, len(DEFAULTS['financial']))
-        def_ratio_eco = sum(1 for k,v in DEFAULTS['ecological'].items() if eco_metrics.get(k, DEFAULTS['ecological'][k]) == DEFAULTS['ecological'][k]) / max(1, len(DEFAULTS['ecological']))
-        def_ratio_soc = sum(1 for k,v in DEFAULTS['social'].items() if soc_metrics.get(k, DEFAULTS['social'][k]) == DEFAULTS['social'][k]) / max(1, len(DEFAULTS['social']))
-        if def_ratio_fin > 0.8:  # Increased threshold from 0.7
-            before = financial_kernel
-            financial_kernel = min(financial_kernel, 50.0)  # Increased from 40.0
-            diagnostics.append(f"Info cap: financial defaults {def_ratio_fin:.2f}→ capped {before:.1f}→{financial_kernel:.1f}")
-        if def_ratio_soc > 0.8:  # Increased threshold from 0.7
-            before = social_kernel
-            social_kernel = min(social_kernel, 45.0)  # Increased from 35.0
-            diagnostics.append(f"Info cap: social defaults {def_ratio_soc:.2f}→ capped {before:.1f}→{social_kernel:.1f}")
-        # Ecological implementation detail cap (no renewables/circularity/adaptation specifics)
-        has_renew = (eco_metrics.get('renewable_energy_pct', 0) or 0) > 0
-        has_circ = (eco_metrics.get('material_circularity', 0.0) or 0.0) > 0
-        has_adapt = (eco_metrics.get('adaptation_measures', 0) or 0) > 0
-        if not (has_renew and has_circ and has_adapt):
-            before = ecological_kernel
-            # Removed cap to allow ecological scores above 55
-            diagnostics.append("Implementation note: ecological score could be higher with more renewables/circularity/adaptation details")
-    except Exception:
-        diagnostics.append("Missing-data evaluation error; skipped caps")
-
-    # DEPRECATED: This is the old hardcoded calculation
-    # The superior kernel engine uses dynamic weights based on project type
-    # weights = {"financial": 0.55, "ecological": 0.30, "social": 0.15}
-    # overall = calculate_overall_score(financial_kernel, ecological_kernel, social_kernel, weights)
-    # tier = get_performance_tier(overall)
-
-    # Use superior kernel engine calculation instead
-    # This function is now deprecated and should not be used
-    # The superior kernel engine handles all calculations with dynamic weights
-
-    return {
-        "weights": weights,
-        "metrics": metrics,
-        "components": {
-            "financial": {"economic_performance": round(econ_perf, 1), "risk_management": round(risk_mgmt, 1), "resource_efficiency": round(resource_eff, 1)},
-            "ecological": {"environmental_impact": round(env_impact, 1), "resource_stewardship": round(stewardship, 1), "climate_action": round(climate_action, 1)},
-            "social": {"human_capital": round(human_cap, 1), "community_impact": round(community, 1), "governance": round(governance, 1)}
-        },
-        "kernel_scores": {
-            "financial": round(financial_kernel, 1),
-            "ecological": round(ecological_kernel, 1),
-            "social": round(social_kernel, 1)
-        },
-        "overall": {"score": overall, "tier": tier},
-        "diagnostics": diagnostics
-    }
+    # Note: legacy ESG code removed; this function now only returns kernel_engine outputs or a concise fallback above.
 
 class KernelScore(BaseModel):
     project_cost: int
@@ -940,18 +786,7 @@ class ProjectScore(BaseModel):
 class KernelScoresResponse(BaseModel):
     kernel_scores: List[ProjectScore]
 
-class SwarmTraceRequest(BaseModel):
-    agent: str
-    action: str
-    tool: str
-    vault: str
-    proposal: str
-    score: float
-    comment: str
-
-class SwarmTraceResponse(BaseModel):
-    status: str
-    entry: Dict[str, Any]
+ 
 
 class DocumentUploadResponse(BaseModel):
     status: str
@@ -1003,7 +838,17 @@ trustgraph = TrustGraph()
 
 # === Helper Functions (same as Flask version) ===
 def process_file(file_path: str) -> str:
-    """Extract text from various file formats."""
+    """Extract UTF-8 text from a file by format-aware parsing.
+
+    Dispatches to a format-specific extractor based on file extension. Provides
+    OCR fallback for image-only PDFs and safe error handling across formats.
+
+    Args:
+        file_path: Absolute path to the source file on disk.
+
+    Returns:
+        str: Best-effort extracted textual content. Empty string on failure.
+    """
     ext = Path(file_path).suffix.lower()
     
     if ext == '.pdf':
@@ -1022,7 +867,18 @@ def process_file(file_path: str) -> str:
         return process_text(file_path)
 
 def process_pdf(file_path: str) -> str:
-    """Extract text from PDF with OCR fallback."""
+    """Extract text from a PDF document with OCR fallback for scanned pages.
+
+    Attempts structured text extraction via pdfplumber. If a page has no text,
+    performs OCR using pytesseract on the rendered page image. Falls back to
+    PyPDF2 if pdfplumber fails.
+
+    Args:
+        file_path: Path to the PDF file.
+
+    Returns:
+        str: Extracted text content (may include OCR output).
+    """
     text = ""
     try:
         with pdfplumber.open(file_path) as pdf:
@@ -1050,7 +906,18 @@ def process_pdf(file_path: str) -> str:
     return text
 
 def load_documents_from_directory(directory_path: str) -> None:
-    """Populate global documents and chunk_sources from files in directory_path."""
+    """Load and parse supported files from a directory into memory.
+
+    Scans the given directory for supported file types, extracts text using
+    `process_file`, and populates the global `documents` and `chunk_sources`
+    lists for downstream RAG indexing.
+
+    Args:
+        directory_path: Directory containing raw documents.
+
+    Returns:
+        None. Side effects: updates global `documents` and `chunk_sources`.
+    """
     global documents, chunk_sources
     try:
         if not os.path.exists(directory_path):
@@ -1077,7 +944,14 @@ def load_documents_from_directory(directory_path: str) -> None:
         logger.error(f"Error scanning data directory {directory_path}: {e}")
 
 def process_docx(file_path: str) -> str:
-    """Extract text from DOCX file."""
+    """Extract plain text from a DOCX document using python-docx.
+
+    Args:
+        file_path: Path to the .docx file.
+
+    Returns:
+        str: Concatenated paragraph text, or empty string on error.
+    """
     try:
         doc = docx.Document(file_path)
         return "\n".join([paragraph.text for paragraph in doc.paragraphs])
@@ -1086,7 +960,14 @@ def process_docx(file_path: str) -> str:
         return ""
 
 def process_pptx(file_path: str) -> str:
-    """Extract text from PPTX file."""
+    """Extract textual content from a PPTX file by iterating slide shapes.
+
+    Args:
+        file_path: Path to the .pptx file.
+
+    Returns:
+        str: Combined text from all shapes that expose a `text` attribute.
+    """
     try:
         prs = Presentation(file_path)
         text = ""
@@ -1100,7 +981,14 @@ def process_pptx(file_path: str) -> str:
         return ""
 
 def process_csv(file_path: str) -> str:
-    """Extract text from CSV file."""
+    """Extract CSV rows as newline-joined comma-separated strings.
+
+    Args:
+        file_path: Path to the .csv file.
+
+    Returns:
+        str: CSV content as human-readable lines, or empty string on error.
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
@@ -1110,7 +998,14 @@ def process_csv(file_path: str) -> str:
         return ""
 
 def process_yaml(file_path: str) -> str:
-    """Extract text from YAML file."""
+    """Extract YAML content and re-serialize in a canonical readable form.
+
+    Args:
+        file_path: Path to the .yaml/.yml file.
+
+    Returns:
+        str: YAML dumped as text, or empty string on error.
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             data = yaml.safe_load(file)
@@ -1120,7 +1015,14 @@ def process_yaml(file_path: str) -> str:
         return ""
 
 def process_json(file_path: str) -> str:
-    """Extract text from JSON file."""
+    """Extract and pretty-print JSON content.
+
+    Args:
+        file_path: Path to the .json file.
+
+    Returns:
+        str: Indented JSON string, or empty string on error.
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
@@ -1130,7 +1032,14 @@ def process_json(file_path: str) -> str:
         return ""
 
 def process_text(file_path: str) -> str:
-    """Extract text from plain text file."""
+    """Read a UTF-8 text file verbatim.
+
+    Args:
+        file_path: Path to the text file.
+
+    Returns:
+        str: Full file contents, or empty string on error.
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             return file.read()
@@ -1139,7 +1048,17 @@ def process_text(file_path: str) -> str:
         return ""
 
 def get_embeddings(texts: List[str]) -> List[List[float]]:
-    """Get embeddings for a list of texts."""
+    """Generate vector embeddings for a list of texts using configured provider.
+
+    Tries OpenAI embeddings by default, then Gemini if selected. Returns empty
+    list on provider errors to avoid crashing higher-level flows.
+
+    Args:
+        texts: List of input strings to embed.
+
+    Returns:
+        List[List[float]]: Embedding vectors; empty if embedding fails.
+    """
     if not texts:
         return []
     
@@ -1248,7 +1167,7 @@ def answer_question(question: str, mode: Optional[str] = None) -> tuple[str, Opt
         return "Failed to generate question embedding.", None, 1.0
     
     # Search for similar documents
-    D, I = index.search(np.array(question_embedding), k=3)
+    D, I = index.search(np.array(question_embedding, dtype=np.float32), k=3)
     
     if len(I[0]) == 0:
         return "No relevant documents found.", None, 1.0
@@ -1272,7 +1191,14 @@ def answer_question(question: str, mode: Optional[str] = None) -> tuple[str, Opt
     return answer, source, best_distance
 
 def embed_and_index():
-    """Create embeddings and build FAISS index."""
+    """Embed loaded documents and build a FAISS index in-memory.
+
+    Batches documents to control memory usage, logs progress, and initializes a
+    flat L2 FAISS index for similarity search.
+
+    Returns:
+        None. Side effects: sets the global `index` and logs status.
+    """
     global index
     
     if not documents:
@@ -1296,12 +1222,20 @@ def embed_and_index():
     # Build FAISS index
     dimension = len(all_embeddings[0])
     index = faiss.IndexFlatL2(dimension)
-    index.add(np.array(all_embeddings))
+    index.add(np.array(all_embeddings, dtype=np.float32))
     
     logger.info(f"Index built with {index.ntotal} vectors.")
 
 def save_persistent_data():
-    """Save documents and sources to disk."""
+    """Persist documents and FAISS index to disk for warm restarts.
+
+    Stores documents and their source mapping in `docs.pkl` and writes the
+    FAISS index to `index.faiss` when available. Ensures parent directories
+    exist before writing.
+
+    Returns:
+        None.
+    """
     data = {
         'documents': documents,
         'chunk_sources': chunk_sources
@@ -1319,7 +1253,15 @@ def save_persistent_data():
         faiss.write_index(index, faiss_index_path)
 
 def load_persistent_data():
-    """Load documents and sources from disk."""
+    """Load previously saved documents and FAISS index from disk.
+
+    If present, populates the global `documents`, `chunk_sources`, and `index`
+    from their respective storage locations, handling corrupt or missing files
+    gracefully.
+
+    Returns:
+        None.
+    """
     global documents, chunk_sources, index
     
     default_docs_pkl = Path(__file__).resolve().parents[1] / 'storage' / 'docs.pkl'
@@ -1372,7 +1314,22 @@ async def verify_api_key(authorization: str = Header(None)):
 # === FastAPI Routes ===
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_api(request: ChatRequest):
-    """Chat endpoint for asking questions."""
+    """Answer a user question using the RAG pipeline with ESG scoring.
+
+    The endpoint retrieves relevant context via vector search, queries the
+    configured LLM to synthesize an answer, and computes ESG scores using the
+    superior kernel engine. Returns the answer, best source, distance, and ESG
+    details for transparency.
+
+    Args:
+        request: ChatRequest with question text and optional mode.
+
+    Returns:
+        ChatResponse: RAG answer, source identifier, confidence, distance, ESG.
+
+    Raises:
+        HTTPException: 400 for invalid input; 500 for processing failures.
+    """
     try:
         if not request.question:
             raise HTTPException(status_code=400, detail="No question provided")
@@ -1403,7 +1360,21 @@ async def chat_api(request: ChatRequest):
 
 @app.post("/api/agent-factory", response_model=AgentFactoryResponse)
 async def agent_factory_api(request: AgentFactoryRequest):
-    """Handle agent factory requests with enhanced context and pipeline execution."""
+    """Create an agent pipeline response with enhanced context and formatting.
+
+    Enhances the query based on `context_type`, executes the retrieval and
+    response pipeline, and returns a formatted result with confidence and steps
+    performed. Intended as a higher-level orchestration helper.
+
+    Args:
+        request: AgentFactoryRequest including query, mode, and context_type.
+
+    Returns:
+        AgentFactoryResponse: Status, formatted result, confidence, steps.
+
+    Raises:
+        HTTPException: 400 for missing query; 500 for internal errors.
+    """
     try:
         if not request.query:
             raise HTTPException(status_code=400, detail="No query provided")
@@ -1445,7 +1416,14 @@ async def agent_factory_api(request: AgentFactoryRequest):
 
 @app.get("/api/status", response_model=StatusResponse)
 async def status_api():
-    """Get RAG system status."""
+    """Report the current RAG system status and available files.
+
+    Returns document count, index readiness, a list of loadable files in the
+    data directory, and whether the API client is configured.
+
+    Returns:
+        StatusResponse: High-level status suitable for health dashboards.
+    """
     supported_files = [f for f in os.listdir(DATA_DIR) if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS or not Path(f).suffix] if os.path.exists(DATA_DIR) else []
     unique_docs = set(chunk_sources) if chunk_sources else set()
     
@@ -1461,7 +1439,14 @@ async def status_api():
 
 @app.get("/api/document-stats")
 async def document_stats_api():
-    """Get detailed document statistics."""
+    """Return fine-grained statistics about the loaded document corpus.
+
+    Includes counts, distribution by source, and chunk length metrics to help
+    monitor retrieval quality.
+
+    Returns:
+        dict: Status and statistics payload.
+    """
     try:
         stats = get_document_statistics()
         return {
@@ -1474,7 +1459,20 @@ async def document_stats_api():
 
 @app.post("/api/search")
 async def search_api(request: dict):
-    """Search documents with detailed results."""
+    """Semantic search over the indexed document corpus.
+
+    Uses vector search to find the top_k most relevant chunks for the query and
+    returns results with distances and confidence estimates.
+
+    Args:
+        request: JSON with `query` and optional `top_k` (default 5).
+
+    Returns:
+        dict: Success payload including results and total count.
+
+    Raises:
+        HTTPException: 400 for missing query; 500 on errors.
+    """
     try:
         query = request.get("query", "")
         top_k = request.get("top_k", 5)
@@ -1496,7 +1494,17 @@ async def search_api(request: dict):
 
 @app.post("/api/build-embeddings")
 async def build_embeddings_api():
-    """Build embeddings for all documents on-demand."""
+    """Create embeddings for loaded documents and persist the FAISS index.
+
+    Loads documents from disk if needed, embeds in batches, builds/updates the
+    FAISS index, and saves both documents and index for fast startup.
+
+    Returns:
+        dict: Success message, counts, vector total, and processing time.
+
+    Raises:
+        HTTPException: 400 if no documents; 500 if embedding fails.
+    """
     try:
         global index
         
@@ -1537,13 +1545,80 @@ async def build_embeddings_api():
 
 @app.get("/api/embeddings-status")
 async def embeddings_status_api():
-    """Get the current status of embeddings."""
+    """Return current embedding/index status and vector counts.
+
+    Useful for monitoring whether the index is built and how many vectors are
+    present, along with the list of unique sources.
+    """
     return {
         "documents_loaded": len(documents),
         "index_ready": bool(index is not None),
         "vectors_count": index.ntotal if index else 0,
         "documents_sources": list(set(chunk_sources)) if chunk_sources else []
     }
+
+@app.get("/platform/capabilities")
+async def platform_capabilities():
+    """Unified snapshot of key platform capabilities and status.
+
+    Aggregates orchestrator agent registry, RAG readiness, WebSocket endpoints,
+    prediction aggregator stats, reranker availability, STT capability, and
+    ingestion metadata for a single-pane-of-glass view.
+    """
+    try:
+        # Orchestrator / Swarm
+        try:
+            agents = [
+                {
+                    "agent_id": agent_id,
+                    "agent_type": agent.agent_type.value,
+                }
+                for agent_id, agent in getattr(swarm_manager, "protocol", {}).agents.items()  # type: ignore[attr-defined]
+            ] if hasattr(swarm_manager, "protocol") else []
+        except Exception:
+            agents = []
+
+        # RAG status
+        rag_status = {
+            "documents_loaded": len(set(chunk_sources)) if chunk_sources else 0,
+            "index_ready": bool(index is not None),
+            "vectors_count": getattr(index, "ntotal", 0) if index else 0,
+        }
+
+        # Aggregation stats
+        try:
+            agg_stats = prediction_aggregator.get_aggregation_stats()
+        except Exception:
+            agg_stats = {"available": False}
+
+        # Rerank stats
+        try:
+            rerank_stats = cohere_reranker.get_performance_stats()
+        except Exception:
+            rerank_stats = {"available": False}
+
+        # STT availability
+        stt_available = bool(LLM_PROVIDER == "openai" and client is not None)
+
+        # Doc ingestion
+        supported = list(SUPPORTED_EXTENSIONS)
+
+        return {
+            "orchestrator": {"agents": agents},
+            "rag": rag_status,
+            "websocket": {
+                "kernel_updates": "/ws/kernel/updates",
+                "status": "/ws/status",
+                "active_connections": getattr(websocket_manager, "connection_count", 0),
+            },
+            "prediction_aggregator": agg_stats,
+            "cohere_rerank": rerank_stats,
+            "speech_to_text": {"openai_whisper": stt_available},
+            "document_ingestion": {"data_dir": DATA_DIR, "supported_extensions": supported},
+        }
+    except Exception as e:
+        logger.error(f"Capabilities endpoint failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Kernel scoring request models
 class KernelScoreRequest(BaseModel):
@@ -1556,6 +1631,7 @@ class KernelScoreResponse(BaseModel):
     project_id: str
     project_name: str
     scores: Dict[str, float]
+    weights: Dict[str, float]
     ai_analysis: Dict[str, Any]
     confidence: float
     timestamp: str
@@ -1563,8 +1639,22 @@ class KernelScoreResponse(BaseModel):
 # ... existing code ...
 
 @app.post("/kernel/scores", response_model=KernelScoreResponse)
-async def kernel_scores_post_api(request: KernelScoreRequest):
-    """Process project data and return AI-driven kernel scores using superior kernel engine."""
+async def kernel_scores_post_api(request: KernelScoreRequest, api_key: str = Depends(verify_api_key)):
+    """Compute AI-driven kernel scores for a project payload.
+
+    Converts request metadata into the `kernel_scoring_engine` format and calls
+    the engine to produce Financial/Ecological/Social kernel scores, plus
+    overall score and recommendations. Logs a summary to TrustGraph.
+
+    Args:
+        request: KernelScoreRequest including project metadata and metrics.
+
+    Returns:
+        KernelScoreResponse: Scores, weights, AI analysis, confidence, timestamp.
+
+    Raises:
+        HTTPException: 500 if the scoring process fails.
+    """
     try:
         # Extract metadata
         financial_data = request.metadata.get("financial", {})
@@ -1620,6 +1710,13 @@ async def kernel_scores_post_api(request: KernelScoreRequest):
                 "ecological": round(esg_score.ecological.score, 1),
                 "social": round(esg_score.social.score, 1),
                 "overall": round(esg_score.overall_score, 1)
+            },
+            weights={
+                # Mirror engine weights for the inferred project type
+                **({"financial": 0.35, "ecological": 0.40, "social": 0.25} if metadata.project_type in [ProjectType.SOLAR_FARM, ProjectType.WIND_FARM] else
+                   {"financial": 0.25, "ecological": 0.35, "social": 0.40} if metadata.project_type == ProjectType.AGRICULTURE else
+                   {"financial": 0.30, "ecological": 0.25, "social": 0.45} if metadata.project_type == ProjectType.HOUSING else
+                   {"financial": 0.33, "ecological": 0.33, "social": 0.34})
             },
             ai_analysis={
                 "method": "superior_kernel_engine",
@@ -1680,9 +1777,9 @@ async def compute_ai_kernel_scores(financial_data: Dict, ecological_data: Dict, 
                 "confidence": scores.get("confidence", 0.85)
             }
             
-        elif LLM_PROVIDER == "gemini" and gemini_client:
-            # Gemini implementation
-            response = gemini_client.generate_content(context)
+        elif LLM_PROVIDER == "gemini" and gemini_ready:
+            model = genai.GenerativeModel(GEMINI_CHAT_MODEL)
+            response = model.generate_content(context)
             scores = parse_ai_scores(response.text)
             
             return {
@@ -1801,7 +1898,12 @@ def compute_fallback_scores(financial_data: Dict, ecological_data: Dict, social_
 
 @app.get("/kernel/scores", response_model=KernelScoresResponse)
 async def kernel_scores_get_api():
-    """Return mock scores for Financial, Ecological, and Social kernels."""
+    """Return example kernel scores for demo/testing.
+
+    This GET endpoint serves illustrative data. Use POST /kernel/scores to call
+    the real kernel scoring engine with project-specific inputs.
+    """
+    logger.info("GET /kernel/scores called - returning demo/mock scores; use POST /kernel/scores for real engine outputs")
     mock_scores = [
         ProjectScore(
             project_name="Tributary Campus",
@@ -1853,7 +1955,11 @@ async def kernel_scores_get_api():
 
 # === WebSocket Connection Management ===
 class WebSocketManager:
-    """Manages WebSocket connections with proper cleanup"""
+    """Manage WebSocket connections and lifecycle.
+
+    Tracks active connections, supports broadcasting JSON messages, and
+    implements robust cleanup and close-frame handling to avoid leaks.
+    """
     
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -1904,7 +2010,11 @@ websocket_manager = WebSocketManager()
 # WebSocket for real-time kernel updates
 @app.websocket("/ws/kernel/updates")
 async def websocket_kernel_updates(websocket: WebSocket):
-    """WebSocket endpoint for real-time kernel score updates with proper close frame handling."""
+    """Push real-time kernel score updates to connected clients.
+
+    Periodically computes or fetches the latest kernel scores and broadcasts
+    them in a structured JSON payload. Ensures proper close-frame handling.
+    """
     await websocket_manager.connect(websocket)
     
     try:
@@ -1944,7 +2054,11 @@ async def websocket_kernel_updates(websocket: WebSocket):
 # WebSocket for general system status updates
 @app.websocket("/ws/status")
 async def websocket_status_updates(websocket: WebSocket):
-    """WebSocket endpoint for real-time system status updates with proper close frame handling."""
+    """Send periodic system status updates via WebSocket.
+
+    Broadcasts high-level system health data, active connection counts, and
+    last kernel update timestamps at a fixed interval.
+    """
     await websocket_manager.connect(websocket)
     
     try:
@@ -2058,8 +2172,8 @@ async def predict_aggregate(request: PredictionAggregationRequest):
         llm_clients = {}
         if LLM_PROVIDER == "openai" and client:
             llm_clients['openai'] = client
-        if LLM_PROVIDER == "gemini" and gemini_client:
-            llm_clients['gemini'] = gemini_client
+        if LLM_PROVIDER == "gemini" and gemini_ready:
+            llm_clients['gemini'] = genai
         if LLM_PROVIDER == "xai" and xai_client:
             llm_clients['xai'] = xai_client
         
@@ -2438,7 +2552,7 @@ def extract_fallback_metrics(text: str) -> Dict[str, Any]:
         }
     }
 
-@app.post("/swarm/trace", response_model=SwarmTraceResponse)
+@app.post("/swarm/trace/local", response_model=SwarmTraceResponse)
 async def swarm_trace_api(request: SwarmTraceRequest):
     """Log an agent action to the TrustGraph."""
     try:
@@ -2471,17 +2585,24 @@ async def transcribe_audio(file: UploadFile = File(...)):
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        with open(tmp_path, "rb") as audio_f:
-            # Whisper model name; remains available for transcription
-            result = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_f
-            )
+        try:
+            with open(tmp_path, "rb") as audio_f:
+                # Whisper model name; remains available for transcription
+                result = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_f
+                )
 
-        text = getattr(result, "text", None) or (result.get("text") if isinstance(result, dict) else None)
-        if not text:
-            raise HTTPException(status_code=500, detail="Failed to transcribe audio")
-        return {"text": text}
+            text = getattr(result, "text", None) or (result.get("text") if isinstance(result, dict) else None)
+            if not text:
+                raise HTTPException(status_code=500, detail="Failed to transcribe audio")
+            return {"text": text}
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
     except HTTPException:
         raise
     except Exception as e:
@@ -2807,7 +2928,7 @@ def answer_question_improved(question: str, mode: Optional[str] = None) -> tuple
         return "Failed to generate question embedding.", None, 1.0
     
     # Search for more relevant documents (increased from 3 to 5)
-    D, I = index.search(np.array(question_embedding), k=5)
+    D, I = index.search(np.array(question_embedding, dtype=np.float32), k=5)
     
     if len(I[0]) == 0:
         return "No relevant documents found.", None, 1.0
@@ -2944,7 +3065,7 @@ def search_documents(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         return []
     
     # Search for similar documents
-    D, I = index.search(np.array(query_embedding), k=top_k)
+    D, I = index.search(np.array(query_embedding, dtype=np.float32), k=top_k)
     
     results = []
     for i in range(len(I[0])):

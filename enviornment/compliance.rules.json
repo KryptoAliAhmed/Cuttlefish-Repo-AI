@@ -1,0 +1,7 @@
+{
+  "max_budget": 5000000,
+  "allowed_jurisdictions": ["us", "eu", "uk"],
+  "min_safety_score": 0.6
+}
+
+
